@@ -1,0 +1,18 @@
+# Data files
+canada_da_boundaries_simplified.geojson
+canada_da_boundaries_wgs84.geojson
+boundaries/
+data_tiles/
+new_boundaries/
+output_data/
+
+# Dependencies
+node_modules/
+
+# System files
+.DS_Store
+
+# Intermediate files
+canada_da_enriched*.geojson
+canada_tiles.mbtiles
+*.mbtiles

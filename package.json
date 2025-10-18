@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "csv-parser": "^3.2.0",
+    "d3-dsv": "^3.0.1",
+    "proj4": "^2.19.7",
+    "stream-chain": "^3.4.0",
+    "stream-json": "^1.9.1"
+  }
+}

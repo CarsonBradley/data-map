@@ -15,4 +15,4 @@ node_modules/
 # Intermediate files
 canada_da_enriched*.geojson
 canada_tiles.mbtiles
-*.mbtiles
+*.mbtiles1

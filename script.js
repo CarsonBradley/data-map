@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '60': { name: 'Yukon', abbr: 'YT' }, '61': { name: 'Northwest Territories', abbr: 'NT' },
         '62': { name: 'Nunavut', abbr: 'NU' }
     };
-    proj4.defs('EPSG:3347', '+proj=lcc +lat_1=49 +lat_2=77 +lat_0=63.390675 +lon_0=-91.86666666666666 +x_0=6200000 +y_0=3000000 +ellps=GRS80 +datum=NAD83 +units=m +no_defs');
+    
 
     // --- INDEXEDDB CACHE SERVICE ---
     const CacheService = {
@@ -823,10 +823,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 StateService.setState({ isLoading: true, loadingMessage: 'Loading federal electoral data...' });
                 
                 // Load federal boundaries
-                const federalGeoData = await DataService.fetchGeoJSON('../boundaries/fed_2023_boundaries.geojson');
-                
+                const federalGeoData = await DataService.fetchGeoJSON('boundaries/fed_2023_boundaries.geojson');
+
                 // Load federal census data
-                const federalCensusData = await DataService.fetchAndParseCSV('../output_data/filtered_fed_data.csv');
+                const federalCensusData = await DataService.fetchAndParseCSV('output_data/filtered_fed_data.csv');
                 
                 StateService.setState({ 
                     federalGeoData, 
@@ -848,15 +848,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const abbr = PROVINCES[provinceId].abbr;
-                const geoUrl = `../new_boundaries/provinces/da_${provinceId}_${abbr}.geojson`;
-                const censusUrl = `../output_data/provinces/da_${provinceId}_${abbr}_data.csv`;
+                const geoUrl = `new_boundaries/provinces/da_${provinceId}_${abbr}_wgs84.geojson`;
+                const censusUrl = `output_data/provinces/da_${provinceId}_${abbr}_data.csv`;
                 
-                const [geoDataRaw, censusData] = await Promise.all([
+                const [geoData, censusData] = await Promise.all([
                     DataService.fetchGeoJSON(geoUrl),
                     DataService.fetchAndParseCSV(censusUrl)
                 ]);
-                
-                const geoData = DataService.transformGeoJSON(geoDataRaw);
                 const characteristicGroups = DataService.organizeCensusData(censusData);
                 
                 StateService.setState({

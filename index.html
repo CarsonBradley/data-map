@@ -34,6 +34,14 @@
                 <span id="province-name"></span>
                 <button id="change-province-btn">Change</button>
             </div>
+            <div id="election-display" class="hidden">
+                <span id="election-year"></span>
+                <div class="election-toggle-buttons">
+                    <button id="toggle-2019-btn" class="election-toggle-btn">2019</button>
+                    <button id="toggle-2021-btn" class="election-toggle-btn">2021</button>
+                </div>
+                <button id="change-election-btn">Change</button>
+            </div>
         </div>
     </header>
 
@@ -45,6 +53,13 @@
                 <h2>Canadian Demographics</h2>
                 <p>Select a province or territory to explore detailed census analytics and demographic insights.</p>
                 <div class="province-grid" id="province-grid"></div>
+                <div class="election-section">
+                    <h3>Federal Election Results</h3>
+                    <div class="election-buttons">
+                        <button id="view-2019-election-btn" class="btn btn-election">2019 Election</button>
+                        <button id="view-2021-election-btn" class="btn btn-election">2021 Election</button>
+                    </div>
+                </div>
             </div>
         </div>
         

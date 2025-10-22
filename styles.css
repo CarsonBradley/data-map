@@ -332,3 +332,202 @@ body {
     background: var(--slate-100);
     border-color: var(--slate-400);
 }
+
+/* ELECTION STYLES */
+.election-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid var(--border-color);
+    text-align: center;
+}
+
+.btn-election {
+    background: linear-gradient(135deg, #2563EB 0%, #DC2626 100%);
+    color: white;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-lg);
+}
+
+.btn-election:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-xl);
+}
+
+.popup-header.election {
+    background: linear-gradient(135deg, #2563EB 0%, #DC2626 100%);
+    color: white;
+}
+
+.election-winner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--slate-100);
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.party-badge {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.5rem;
+    flex-shrink: 0;
+}
+
+.winner-info {
+    flex: 1;
+}
+
+.winner-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.winner-party {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.election-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.all-candidates {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.all-candidates strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.candidate-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+}
+
+.candidate-party {
+    font-weight: 500;
+}
+
+.candidate-votes {
+    color: var(--text-secondary);
+}
+
+.election-section h3 {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+}
+
+.election-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+#election-display {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--white);
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color);
+}
+
+#election-year {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.election-toggle-buttons {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--slate-100);
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+}
+
+.election-toggle-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+}
+
+.election-toggle-btn:hover {
+    background: var(--white);
+    color: var(--text-primary);
+}
+
+.election-toggle-btn.active {
+    background: linear-gradient(135deg, #2563EB 0%, #DC2626 100%);
+    color: white;
+}
+
+.election-toggle-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.election-toggle-btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.election-toggle-btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin-top: -7px;
+    margin-left: -7px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+#change-election-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: var(--slate-200);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#change-election-btn:hover {
+    background: var(--slate-300);
+}

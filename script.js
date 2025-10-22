@@ -284,6 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         map: null,
         geojsonLayer: null,
         federalOverlayLayer: null,
+        electionLayer: null,
         
         initialize() {
             this.map = L.map('map', { 
@@ -303,6 +304,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             this.map.createPane('federalOverlay');
             this.map.getPane('federalOverlay').style.zIndex = 475; // Sits above data, below labels
+
+            this.map.createPane('electionPane');
+            this.map.getPane('electionPane').style.zIndex = 460; // Election results layer
 
             this.map.createPane('labels');
             this.map.getPane('labels').style.zIndex = 500; // Labels on top
@@ -330,6 +334,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.federalOverlayLayer) {
                 this.map.removeLayer(this.federalOverlayLayer);
                 this.federalOverlayLayer = null;
+            }
+            if (this.electionLayer) {
+                this.map.removeLayer(this.electionLayer);
+                this.electionLayer = null;
             }
         },
 
@@ -416,6 +424,121 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.map.removeLayer(this.federalOverlayLayer);
                 this.federalOverlayLayer = null;
             }
+        },
+
+        displayElectionResults(electionData, preserveView = false) {
+            if (this.electionLayer) {
+                this.map.removeLayer(this.electionLayer);
+                this.electionLayer = null;
+            }
+
+            this.electionLayer = L.geoJSON(electionData, {
+                pane: 'electionPane',
+                style: feature => {
+                    const results = feature.properties.electionResults;
+                    const party = results?.winner?.party;
+                    return {
+                        fillColor: this.getPartyColor(party),
+                        weight: 1.5,
+                        color: '#333333',
+                        opacity: 0.8,
+                        fillOpacity: 0.7
+                    };
+                },
+                onEachFeature: (feature, layer) => {
+                    layer.on('click', () => {
+                        const results = feature.properties.electionResults;
+                        const props = feature.properties;
+
+                        let popupContent = `
+                            <div class="popup-header election">
+                                <h4>${props.ED_NAMEE}</h4>
+                                <div class="subtitle">Riding ${props.FED_NUM}</div>
+                            </div>
+                            <div class="popup-body">`;
+
+                        if (results && results.winner) {
+                            const winner = results.winner;
+                            popupContent += `
+                                <div class="election-winner">
+                                    <div class="party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
+                                    <div class="winner-info">
+                                        <div class="winner-name">${winner.name}</div>
+                                        <div class="winner-party">${winner.party}</div>
+                                    </div>
+                                </div>
+                                <div class="election-stats">
+                                    <div class="popup-stat">
+                                        <div class="popup-stat-label">Votes</div>
+                                        <div class="popup-stat-value">${winner.votes.toLocaleString()} (${winner.percentage}%)</div>
+                                    </div>
+                                    <div class="popup-stat">
+                                        <div class="popup-stat-label">Margin</div>
+                                        <div class="popup-stat-value">${winner.margin.toLocaleString()} (${winner.marginPercent}%)</div>
+                                    </div>
+                                    <div class="popup-stat">
+                                        <div class="popup-stat-label">Total Votes</div>
+                                        <div class="popup-stat-value">${results.totalVotes.toLocaleString()}</div>
+                                    </div>
+                                </div>`;
+
+                            if (results.candidates && results.candidates.length > 1) {
+                                popupContent += `<div class="all-candidates"><strong>All Candidates:</strong>`;
+                                results.candidates.forEach(candidate => {
+                                    const indicator = candidate.isWinner ? ' ★' : '';
+                                    popupContent += `
+                                        <div class="candidate-row">
+                                            <span class="candidate-party" style="color: ${this.getPartyColor(candidate.party)}">${candidate.party}</span>
+                                            <span class="candidate-votes">${candidate.votes.toLocaleString()} (${candidate.percentage}%)${indicator}</span>
+                                        </div>`;
+                                });
+                                popupContent += `</div>`;
+                            }
+                        } else {
+                            popupContent += `<div class="popup-nodata">No election data available</div>`;
+                        }
+
+                        popupContent += `</div>`;
+
+                        L.popup({ maxWidth: 350, minWidth: 320, closeButton: true })
+                            .setLatLng(layer.getBounds().getCenter())
+                            .setContent(popupContent)
+                            .openOn(this.map);
+                    });
+                }
+            }).addTo(this.map);
+
+            // Only fit bounds on initial load, not when toggling years
+            if (!preserveView) {
+                try {
+                    const bounds = this.electionLayer.getBounds();
+                    if (bounds.isValid()) {
+                        this.map.fitBounds(bounds);
+                    }
+                } catch (e) {
+                    console.warn('Could not fit bounds:', e);
+                }
+            }
+        },
+
+        removeElectionResults() {
+            if (this.electionLayer) {
+                this.map.removeLayer(this.electionLayer);
+                this.electionLayer = null;
+            }
+        },
+
+        getPartyColor(party) {
+            const partyColors = {
+                'Liberal': '#DC2626',
+                'Conservative': '#2563EB',
+                'NDP': '#F97316',
+                'Bloc Québécois': '#06B6D4',
+                'Green': '#16A34A',
+                'PPC': '#6B21A8',
+                'Independent': '#6B7280'
+            };
+            return partyColors[party] || '#9CA3AF';
         },
 
         extractFedNum(feature) {
@@ -536,11 +659,16 @@ document.addEventListener('DOMContentLoaded', () => {
             provinceDisplay: document.getElementById('province-display'),
             provinceName: document.getElementById('province-name'),
             changeProvinceBtn: document.getElementById('change-province-btn'),
+            electionDisplay: document.getElementById('election-display'),
+            electionYear: document.getElementById('election-year'),
+            changeElectionBtn: document.getElementById('change-election-btn'),
+            toggle2019Btn: document.getElementById('toggle-2019-btn'),
+            toggle2021Btn: document.getElementById('toggle-2021-btn'),
             controlPanel: document.getElementById('control-panel'),
             panelCloseBtn: document.getElementById('panel-close'),
             controlsContainer: document.getElementById('controls-container'),
             legendWrapper: document.getElementById('legend-wrapper'),
-            openControlsBtn: document.getElementById('open-controls-btn'), 
+            openControlsBtn: document.getElementById('open-controls-btn'),
             loadingOverlay: document.getElementById('loading-overlay'),
             loadingText: document.getElementById('loading-text'),
         },
@@ -548,8 +676,30 @@ document.addEventListener('DOMContentLoaded', () => {
         initialize() {
             this.renderProvinceSelector();
             this.elements.panelCloseBtn.addEventListener('click', () => this.setPanelOpen(false));
-            this.elements.openControlsBtn.addEventListener('click', () => this.setPanelOpen(true)); // <-- ADD THIS LINE
-            this.elements.changeProvinceBtn.addEventListener('click', () => this.resetToWelcome());
+            this.elements.openControlsBtn.addEventListener('click', () => this.setPanelOpen(true));
+            this.elements.changeProvinceBtn.addEventListener('click', () => App.returnToWelcome());
+
+            // Add election button listeners
+            const election2019Btn = document.getElementById('view-2019-election-btn');
+            const election2021Btn = document.getElementById('view-2021-election-btn');
+            if (election2019Btn) {
+                election2019Btn.addEventListener('click', () => App.loadElectionResults('2019'));
+            }
+            if (election2021Btn) {
+                election2021Btn.addEventListener('click', () => App.loadElectionResults('2021'));
+            }
+
+            // Add election toggle listeners
+            if (this.elements.toggle2019Btn) {
+                this.elements.toggle2019Btn.addEventListener('click', () => App.toggleElectionYear('2019'));
+            }
+            if (this.elements.toggle2021Btn) {
+                this.elements.toggle2021Btn.addEventListener('click', () => App.toggleElectionYear('2021'));
+            }
+            if (this.elements.changeElectionBtn) {
+                this.elements.changeElectionBtn.addEventListener('click', () => App.returnToWelcome());
+            }
+
             StateService.subscribe(this.handleStateChange.bind(this));
         },
 
@@ -571,9 +721,37 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.currentProvinceId) {
                 this.elements.provinceName.textContent = PROVINCES[state.currentProvinceId].name;
                 this.elements.provinceDisplay.classList.remove('hidden');
+                this.elements.electionDisplay.classList.add('hidden');
             } else {
                 this.elements.provinceDisplay.classList.add('hidden');
             }
+
+            // Update Election Display
+            if (state.showingElections && state.currentElectionYear) {
+                this.elements.electionYear.textContent = `${state.currentElectionYear} Election`;
+                this.elements.electionDisplay.classList.remove('hidden');
+                this.elements.provinceDisplay.classList.add('hidden');
+
+                // Update active button state
+                this.elements.toggle2019Btn.classList.toggle('active', state.currentElectionYear === '2019');
+                this.elements.toggle2021Btn.classList.toggle('active', state.currentElectionYear === '2021');
+
+                // Show/hide loading state on toggle buttons
+                if (state.isTogglingElection) {
+                    this.elements.toggle2019Btn.disabled = true;
+                    this.elements.toggle2021Btn.disabled = true;
+                    this.elements.toggle2019Btn.classList.add('loading');
+                    this.elements.toggle2021Btn.classList.add('loading');
+                } else {
+                    this.elements.toggle2019Btn.disabled = false;
+                    this.elements.toggle2021Btn.disabled = false;
+                    this.elements.toggle2019Btn.classList.remove('loading');
+                    this.elements.toggle2021Btn.classList.remove('loading');
+                }
+            } else {
+                this.elements.electionDisplay.classList.add('hidden');
+            }
+
             // Update Legend
             this.renderLegend(state.currentVisualization);
         },
@@ -818,18 +996,18 @@ document.addEventListener('DOMContentLoaded', () => {
         async loadFederalData() {
             const state = StateService.getState();
             if (state.hasLoadedFederalData) return;
-            
+
             try {
                 StateService.setState({ isLoading: true, loadingMessage: 'Loading federal electoral data...' });
-                
+
                 // Load federal boundaries
                 const federalGeoData = await DataService.fetchGeoJSON('boundaries/fed_2023_boundaries.geojson');
 
                 // Load federal census data
                 const federalCensusData = await DataService.fetchAndParseCSV('output_data/filtered_fed_data.csv');
-                
-                StateService.setState({ 
-                    federalGeoData, 
+
+                StateService.setState({
+                    federalGeoData,
                     federalCensusData,
                     hasLoadedFederalData: true,
                     isLoading: false
@@ -839,6 +1017,55 @@ document.addEventListener('DOMContentLoaded', () => {
                 StateService.setState({ isLoading: false });
                 alert('Failed to load federal electoral data. Please check the console for details.');
             }
+        },
+
+        async loadElectionResults(year, isToggle = false) {
+            try {
+                // For toggles, show inline loading; for initial load, show full screen loading
+                if (isToggle) {
+                    StateService.setState({ isTogglingElection: true });
+                } else {
+                    StateService.setState({ isLoading: true, loadingMessage: `Loading ${year} election results...` });
+                    UIManager.showWelcome(false);
+                }
+
+                // Load the election data with boundaries
+                const electionData = await DataService.fetchGeoJSON(`election_boundaries_19-25/${year}_boundaries/geojson/${year}_riding_with_results_min.json`);
+
+                StateService.setState({
+                    electionData,
+                    currentElectionYear: year,
+                    isLoading: false,
+                    isTogglingElection: false,
+                    showingElections: true
+                });
+
+                // Display the election results on the map, preserving view if toggling
+                MapService.displayElectionResults(electionData, isToggle);
+
+            } catch (error) {
+                console.error("Failed to load election data:", error);
+                StateService.setState({ isLoading: false, isTogglingElection: false });
+                if (!isToggle) {
+                    UIManager.showWelcome(true);
+                }
+                alert(`Failed to load ${year} election results. Please check the console for details.`);
+            }
+        },
+
+        async toggleElectionYear(year) {
+            await this.loadElectionResults(year, true);
+        },
+
+        returnToWelcome() {
+            MapService.clearLayers();
+            StateService.setState({
+                currentProvinceId: null,
+                currentElectionYear: null,
+                showingElections: false,
+                currentVisualization: null
+            });
+            UIManager.resetToWelcome();
         },
         
         async selectProvince(provinceId) {

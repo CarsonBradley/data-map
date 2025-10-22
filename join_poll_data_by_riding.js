@@ -22,7 +22,8 @@ const boundaries = JSON.parse(fs.readFileSync(boundariesPath, 'utf8'));
 // Group boundaries by riding
 const ridingBoundaries = new Map();
 boundaries.features.forEach(feature => {
-    const fedNum = feature.properties.FED_NUM;
+    // Handle both FED_NUM (2021) and FEDNUM (2019)
+    const fedNum = feature.properties.FED_NUM || feature.properties.FEDNUM;
     if (!ridingBoundaries.has(fedNum)) {
         ridingBoundaries.set(fedNum, []);
     }
@@ -54,11 +55,29 @@ pollFiles.forEach((fileName, index) => {
         .pipe(csv())
         .on('data', (row) => rows.push(row))
         .on('end', () => {
-            // Process all rows
+            // First pass: track merged polls
+            const mergedPolls = new Map(); // Maps merged poll number -> target poll number
             rows.forEach(row => {
-                const pollNumStr = row['Polling Station Number/Numéro du bureau de scrutin']?.trim();
-                const pollNum = parseInt(pollNumStr);
+                const mergeWith = row['Merge With/Fusionné avec']?.trim();
+                if (mergeWith && mergeWith !== '') {
+                    const pollNumStr = row['Polling Station Number/Numéro du bureau de scrutin']?.trim();
+                    const pollNum = parseInt(pollNumStr);
+                    const targetPoll = parseInt(mergeWith);
+                    mergedPolls.set(pollNum, targetPoll);
+                }
+            });
 
+            // Second pass: build results for active (non-merged) polls
+            rows.forEach(row => {
+                const mergeWith = row['Merge With/Fusionné avec']?.trim();
+                if (mergeWith && mergeWith !== '') {
+                    return; // Skip merged polls for now
+                }
+
+                const pollNumStr = row['Polling Station Number/Numéro du bureau de scrutin']?.trim();
+                const pollNum = parseInt(pollNumStr); // Base number for matching boundaries
+
+                // If this poll doesn't exist yet, create it
                 if (!pollResults.has(pollNum)) {
                     pollResults.set(pollNum, {
                         pollNumber: pollNum,
@@ -69,6 +88,10 @@ pollFiles.forEach((fileName, index) => {
                         totalVotes: 0,
                         winner: null
                     });
+                } else {
+                    // If poll already exists (e.g. we saw 120A before 120B), update electors to be cumulative
+                    const existing = pollResults.get(pollNum);
+                    existing.electors += parseInt(row['Electors for Polling Station/Électeurs du bureau'] || 0);
                 }
 
                 const poll = pollResults.get(pollNum);
@@ -136,17 +159,22 @@ pollFiles.forEach((fileName, index) => {
             });
 
             // Create GeoJSON for this riding with poll results
+            // Only include features that have matching poll data (exclude merged polls)
             const ridingFeatures = ridingBoundaries.get(fedNum);
+            const featuresWithData = [];
+
             ridingFeatures.forEach(feature => {
-                const pdNum = feature.properties.PD_NUM;
+                // Handle both PD_NUM (2021) and PDNUM (2019)
+                const pdNum = feature.properties.PD_NUM || feature.properties.PDNUM;
                 if (pollResults.has(pdNum)) {
                     feature.properties.pollResults = pollResults.get(pdNum);
+                    featuresWithData.push(feature); // Only include if it has data
                 }
             });
 
             const ridingGeoJSON = {
                 type: 'FeatureCollection',
-                features: ridingFeatures
+                features: featuresWithData // Use filtered list
             };
 
             // Save to file

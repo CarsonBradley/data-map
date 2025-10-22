@@ -285,7 +285,8 @@ document.addEventListener('DOMContentLoaded', () => {
         geojsonLayer: null,
         federalOverlayLayer: null,
         electionLayer: null,
-        
+        selectedPollLayer: null,
+
         initialize() {
             this.map = L.map('map', { 
                 center: [56.1304, -106.3468], 
@@ -450,60 +451,55 @@ document.addEventListener('DOMContentLoaded', () => {
                         const results = feature.properties.electionResults;
                         const props = feature.properties;
 
-                        let popupContent = `
-                            <div class="popup-header election">
-                                <h4>${props.ED_NAMEE}</h4>
-                                <div class="subtitle">Riding ${props.FED_NUM}</div>
-                            </div>
-                            <div class="popup-body">`;
+                        // When clicking a riding, save it as the current riding so poll toggle becomes available
+                        StateService.setState({ currentRidingNumber: props.FED_NUM });
+
+                        // Build content for side panel
+                        let content = '';
 
                         if (results && results.winner) {
                             const winner = results.winner;
-                            popupContent += `
-                                <div class="election-winner">
-                                    <div class="party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
-                                    <div class="winner-info">
-                                        <div class="winner-name">${winner.name}</div>
-                                        <div class="winner-party">${winner.party}</div>
+                            content += `
+                                <div class="info-election-winner">
+                                    <div class="info-party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
+                                    <div class="info-winner-info">
+                                        <div class="info-winner-name">${winner.name}</div>
+                                        <div class="info-winner-party">${winner.party}</div>
                                     </div>
                                 </div>
-                                <div class="election-stats">
-                                    <div class="popup-stat">
-                                        <div class="popup-stat-label">Votes</div>
-                                        <div class="popup-stat-value">${winner.votes.toLocaleString()} (${winner.percentage}%)</div>
+                                <div class="info-election-stats">
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Votes</div>
+                                        <div class="info-stat-value">${winner.votes.toLocaleString()} (${winner.percentage}%)</div>
                                     </div>
-                                    <div class="popup-stat">
-                                        <div class="popup-stat-label">Margin</div>
-                                        <div class="popup-stat-value">${winner.margin.toLocaleString()} (${winner.marginPercent}%)</div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Margin</div>
+                                        <div class="info-stat-value">${winner.margin.toLocaleString()} (${winner.marginPercent}%)</div>
                                     </div>
-                                    <div class="popup-stat">
-                                        <div class="popup-stat-label">Total Votes</div>
-                                        <div class="popup-stat-value">${results.totalVotes.toLocaleString()}</div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Total Votes</div>
+                                        <div class="info-stat-value">${results.totalVotes.toLocaleString()}</div>
                                     </div>
                                 </div>`;
 
                             if (results.candidates && results.candidates.length > 1) {
-                                popupContent += `<div class="all-candidates"><strong>All Candidates:</strong>`;
+                                content += `<div class="info-all-candidates"><strong>All Candidates</strong>`;
                                 results.candidates.forEach(candidate => {
                                     const indicator = candidate.isWinner ? ' ★' : '';
-                                    popupContent += `
-                                        <div class="candidate-row">
-                                            <span class="candidate-party" style="color: ${this.getPartyColor(candidate.party)}">${candidate.party}</span>
-                                            <span class="candidate-votes">${candidate.votes.toLocaleString()} (${candidate.percentage}%)${indicator}</span>
+                                    content += `
+                                        <div class="info-candidate-row">
+                                            <span class="info-candidate-party" style="color: ${this.getPartyColor(candidate.party)}">${candidate.party}</span>
+                                            <span class="info-candidate-votes">${candidate.votes.toLocaleString()} (${candidate.percentage}%)${indicator}</span>
                                         </div>`;
                                 });
-                                popupContent += `</div>`;
+                                content += `</div>`;
                             }
                         } else {
-                            popupContent += `<div class="popup-nodata">No election data available</div>`;
+                            content += `<div class="info-panel-hint">No election data available</div>`;
                         }
 
-                        popupContent += `</div>`;
-
-                        L.popup({ maxWidth: 350, minWidth: 320, closeButton: true })
-                            .setLatLng(layer.getBounds().getCenter())
-                            .setContent(popupContent)
-                            .openOn(this.map);
+                        // Update side panel
+                        UIManager.updateElectionInfo(`${props.ED_NAMEE} (Riding ${props.FED_NUM})`, content);
                     });
                 }
             }).addTo(this.map);
@@ -528,6 +524,122 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        displayPollResults(pollData, ridingNumber, preserveView = false) {
+            if (this.electionLayer) {
+                this.map.removeLayer(this.electionLayer);
+                this.electionLayer = null;
+            }
+
+            this.electionLayer = L.geoJSON(pollData, {
+                pane: 'electionPane',
+                style: feature => {
+                    const results = feature.properties.pollResults;
+                    const colorInfo = this.getPollColorInfo(results);
+
+                    return {
+                        fillColor: colorInfo.color || '#E5E7EB',
+                        weight: 0.5,
+                        color: '#999999',
+                        opacity: 0.4,
+                        fillOpacity: 0.85,
+                        // Store stripe info for custom rendering
+                        className: colorInfo.striped ? 'striped-poll' : ''
+                    };
+                },
+                onEachFeature: (feature, layer) => {
+                    // Apply stripes if needed
+                    const results = feature.properties.pollResults;
+                    const colorInfo = this.getPollColorInfo(results);
+
+                    if (colorInfo.striped && colorInfo.colors) {
+                        // Create diagonal stripe pattern using canvas
+                        layer.on('add', () => {
+                            const path = layer._path;
+                            if (path) {
+                                this.applyStripedPattern(path, colorInfo.colors);
+                            }
+                        });
+                    }
+
+                    layer.on('click', () => {
+                        const results = feature.properties.pollResults;
+                        const props = feature.properties;
+                        const pdNum = props.PD_NUM || props.PDNUM;
+
+                        console.log('Poll clicked, layer:', layer);
+                        console.log('Layer path:', layer._path);
+                        console.log('Current classes:', layer._path ? layer._path.getAttribute('class') : 'no path');
+
+                        // Highlight this poll
+                        this.highlightSelectedPoll(layer);
+
+                        // Build content for side panel
+                        let content = '';
+
+                        if (results && results.winner) {
+                            const winner = results.winner;
+                            content += `
+                                <div class="info-election-winner">
+                                    <div class="info-party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
+                                    <div class="info-winner-info">
+                                        <div class="info-winner-name">${winner.name}</div>
+                                        <div class="info-winner-party">${winner.party}</div>
+                                    </div>
+                                </div>
+                                <div class="info-election-stats">
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Poll Location</div>
+                                        <div class="info-stat-value">${results.pollName || 'N/A'}</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Total Votes</div>
+                                        <div class="info-stat-value">${results.totalVotes.toLocaleString()}</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Electors</div>
+                                        <div class="info-stat-value">${results.electors.toLocaleString()}</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Turnout</div>
+                                        <div class="info-stat-value">${((results.totalVotes / results.electors) * 100).toFixed(1)}%</div>
+                                    </div>
+                                </div>`;
+
+                            if (results.candidates && results.candidates.length > 0) {
+                                content += `<div class="info-all-candidates"><strong>Results by Candidate</strong>`;
+                                results.candidates.forEach(candidate => {
+                                    const indicator = candidate.party === winner.party ? ' ★' : '';
+                                    content += `
+                                        <div class="info-candidate-row">
+                                            <span class="info-candidate-party" style="color: ${this.getPartyColor(candidate.party)}">${candidate.party}</span>
+                                            <span class="info-candidate-votes">${candidate.votes} (${candidate.percentage}%)${indicator}</span>
+                                        </div>`;
+                                });
+                                content += `</div>`;
+                            }
+                        } else {
+                            content += `<div class="info-panel-hint">No poll data available</div>`;
+                        }
+
+                        // Update side panel
+                        UIManager.updateElectionInfo(`Poll ${pdNum} - Riding ${ridingNumber}`, content);
+                    });
+                }
+            }).addTo(this.map);
+
+            // Only fit bounds on initial load
+            if (!preserveView) {
+                try {
+                    const bounds = this.electionLayer.getBounds();
+                    if (bounds.isValid()) {
+                        this.map.fitBounds(bounds, { padding: [20, 20] });
+                    }
+                } catch (e) {
+                    console.warn('Could not fit bounds:', e);
+                }
+            }
+        },
+
         getPartyColor(party) {
             const partyColors = {
                 'Liberal': '#DC2626',
@@ -539,6 +651,156 @@ document.addEventListener('DOMContentLoaded', () => {
                 'Independent': '#6B7280'
             };
             return partyColors[party] || '#9CA3AF';
+        },
+
+        getPollColorInfo(results) {
+            if (!results || !results.candidates || results.candidates.length === 0) {
+                return { color: '#E5E7EB', striped: false }; // Light gray for no data
+            }
+
+            // Sort candidates by votes to get all tied candidates
+            const sortedCandidates = [...results.candidates].sort((a, b) => b.votes - a.votes);
+            const topVotes = sortedCandidates[0].votes;
+
+            // Find all candidates tied for first place
+            const tiedCandidates = sortedCandidates.filter(c => c.votes === topVotes);
+
+            // If it's a tie (2 or more candidates with same votes), return striped pattern
+            if (tiedCandidates.length >= 2) {
+                return {
+                    color: null,
+                    striped: true,
+                    colors: tiedCandidates.slice(0, 3).map(c => this.getPartyColor(c.party)) // Max 3 colors
+                };
+            }
+
+            const winner = sortedCandidates[0];
+            const runnerUp = sortedCandidates[1];
+
+            if (!runnerUp || results.totalVotes === 0) {
+                // Only one candidate or no votes - use full party color
+                return { color: this.getPartyColor(winner.party), striped: false };
+            }
+
+            // Calculate margin percentage (winner's lead over runner-up as % of total votes)
+            const marginPercent = ((winner.votes - runnerUp.votes) / results.totalVotes) * 100;
+
+            // Get base color for winner
+            const winnerColor = this.hexToRgb(this.getPartyColor(winner.party));
+
+            // Define intensity based on margin
+            let intensity;
+            if (marginPercent < 5) {
+                // Very close race - light color
+                intensity = 0.3 + (marginPercent / 5) * 0.2; // 0.3 to 0.5
+            } else if (marginPercent < 15) {
+                // Slight win - light to medium
+                intensity = 0.5 + ((marginPercent - 5) / 10) * 0.2; // 0.5 to 0.7
+            } else if (marginPercent < 30) {
+                // Comfortable win - medium to strong
+                intensity = 0.7 + ((marginPercent - 15) / 15) * 0.2; // 0.7 to 0.9
+            } else {
+                // Landslide - full color
+                intensity = 0.9 + Math.min((marginPercent - 30) / 30, 0.1); // 0.9 to 1.0
+            }
+
+            // Lighten the winner's color based on intensity
+            const r = Math.round(255 - (255 - winnerColor.r) * intensity);
+            const g = Math.round(255 - (255 - winnerColor.g) * intensity);
+            const b = Math.round(255 - (255 - winnerColor.b) * intensity);
+
+            return { color: this.rgbToHex(r, g, b), striped: false };
+        },
+
+        hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        },
+
+        rgbToHex(r, g, b) {
+            return "#" + [r, g, b].map(x => {
+                const hex = x.toString(16);
+                return hex.length === 1 ? "0" + hex : hex;
+            }).join('');
+        },
+
+        applyStripedPattern(path, colors) {
+            // Create SVG pattern for stripes
+            const svg = path.ownerSVGElement || document.querySelector('svg');
+            if (!svg) return;
+
+            // Create unique pattern ID based on colors
+            const patternId = `stripe-${colors.join('-').replace(/#/g, '')}`;
+
+            // Check if pattern already exists
+            let pattern = document.getElementById(patternId);
+            if (!pattern) {
+                // Create new pattern
+                const defs = svg.querySelector('defs') || svg.insertBefore(document.createElementNS('http://www.w3.org/2000/svg', 'defs'), svg.firstChild);
+                pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
+                pattern.setAttribute('id', patternId);
+                pattern.setAttribute('width', '10');
+                pattern.setAttribute('height', '10');
+                pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+                pattern.setAttribute('patternTransform', 'rotate(45)');
+
+                // Create stripes based on number of colors
+                const stripeWidth = 10 / colors.length;
+                colors.forEach((color, i) => {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', i * stripeWidth);
+                    rect.setAttribute('width', stripeWidth);
+                    rect.setAttribute('height', '10');
+                    rect.setAttribute('fill', color);
+                    pattern.appendChild(rect);
+                });
+
+                defs.appendChild(pattern);
+            }
+
+            // Apply pattern to path
+            path.setAttribute('fill', `url(#${patternId})`);
+        },
+
+        highlightSelectedPoll(layer) {
+            console.log('highlightSelectedPoll called');
+            console.log('Layer:', layer);
+            console.log('Layer._path:', layer._path);
+
+            // Remove highlight from previously selected poll
+            if (this.selectedPollLayer && this.selectedPollLayer._path) {
+                console.log('Removing highlight from previous poll');
+                this.selectedPollLayer._path.classList.remove('selected-poll');
+                // Reset the stroke style
+                this.selectedPollLayer.setStyle({
+                    weight: 0.5,
+                    color: '#999999',
+                    opacity: 0.4
+                });
+            }
+
+            // Add highlight to newly selected poll
+            this.selectedPollLayer = layer;
+            if (layer._path) {
+                console.log('Adding highlight class and style');
+                console.log('Classes before:', layer._path.getAttribute('class'));
+                layer._path.classList.add('selected-poll');
+                console.log('Classes after:', layer._path.getAttribute('class'));
+
+                // Also set the style directly to ensure it shows
+                layer.setStyle({
+                    weight: 4,
+                    color: '#FFD700',
+                    opacity: 1
+                });
+                console.log('Style set, stroke should be:', layer.options.color);
+            } else {
+                console.log('WARNING: No _path found on layer!');
+            }
         },
 
         extractFedNum(feature) {
@@ -664,6 +926,9 @@ document.addEventListener('DOMContentLoaded', () => {
             changeElectionBtn: document.getElementById('change-election-btn'),
             toggle2019Btn: document.getElementById('toggle-2019-btn'),
             toggle2021Btn: document.getElementById('toggle-2021-btn'),
+            toggleRidingViewBtn: document.getElementById('toggle-riding-view-btn'),
+            togglePollViewBtn: document.getElementById('toggle-poll-view-btn'),
+            viewLevelToggle: document.getElementById('view-level-toggle'),
             controlPanel: document.getElementById('control-panel'),
             panelCloseBtn: document.getElementById('panel-close'),
             controlsContainer: document.getElementById('controls-container'),
@@ -671,6 +936,10 @@ document.addEventListener('DOMContentLoaded', () => {
             openControlsBtn: document.getElementById('open-controls-btn'),
             loadingOverlay: document.getElementById('loading-overlay'),
             loadingText: document.getElementById('loading-text'),
+            electionInfoPanel: document.getElementById('election-info-panel'),
+            infoPanelTitle: document.getElementById('info-panel-title'),
+            infoPanelContent: document.getElementById('info-panel-content'),
+            infoPanelClose: document.getElementById('info-panel-close'),
         },
 
         initialize() {
@@ -700,7 +969,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.changeElectionBtn.addEventListener('click', () => App.returnToWelcome());
             }
 
+            // Add view level toggle listeners
+            if (this.elements.toggleRidingViewBtn) {
+                this.elements.toggleRidingViewBtn.addEventListener('click', () => App.toggleViewLevel('riding'));
+            }
+            if (this.elements.togglePollViewBtn) {
+                this.elements.togglePollViewBtn.addEventListener('click', () => App.toggleViewLevel('poll'));
+            }
+
+            // Add info panel close listener
+            if (this.elements.infoPanelClose) {
+                this.elements.infoPanelClose.addEventListener('click', () => this.hideElectionInfo());
+            }
+
             StateService.subscribe(this.handleStateChange.bind(this));
+        },
+
+        showElectionInfo() {
+            this.elements.electionInfoPanel.classList.remove('hidden');
+        },
+
+        hideElectionInfo() {
+            this.elements.electionInfoPanel.classList.add('hidden');
+        },
+
+        updateElectionInfo(title, content) {
+            this.elements.infoPanelTitle.textContent = title;
+            this.elements.infoPanelContent.innerHTML = content;
+            this.showElectionInfo();
         },
 
         handleStateChange(state) {
@@ -748,6 +1044,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.elements.toggle2019Btn.classList.remove('loading');
                     this.elements.toggle2021Btn.classList.remove('loading');
                 }
+
+                // Update view level toggle - always visible when showing elections
+                const viewLevel = state.currentViewLevel || 'riding';
+                this.elements.toggleRidingViewBtn.classList.toggle('active', viewLevel === 'riding');
+                this.elements.togglePollViewBtn.classList.toggle('active', viewLevel === 'poll');
+
+                // Disable poll button when in riding view (no riding selected yet)
+                this.elements.togglePollViewBtn.disabled = !state.currentRidingNumber;
+                this.elements.togglePollViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
             } else {
                 this.elements.electionDisplay.classList.add('hidden');
             }
@@ -1035,6 +1340,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 StateService.setState({
                     electionData,
                     currentElectionYear: year,
+                    currentViewLevel: 'riding',
+                    currentRidingNumber: isToggle ? StateService.getState().currentRidingNumber : null,
                     isLoading: false,
                     isTogglingElection: false,
                     showingElections: true
@@ -1054,7 +1361,81 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         async toggleElectionYear(year) {
-            await this.loadElectionResults(year, true);
+            const state = StateService.getState();
+
+            // Check if we're in poll view
+            if (state.currentViewLevel === 'poll' && state.currentRidingNumber) {
+                // Reload poll data for the same riding in the new year
+                try {
+                    StateService.setState({
+                        isTogglingElection: true,
+                        currentElectionYear: year
+                    });
+
+                    // Load poll data for this riding in the new year
+                    const pollData = await DataService.fetchGeoJSON(
+                        `election_boundaries_19-25/${year}_boundaries/geojson/poll_by_riding/${state.currentRidingNumber}_${year}_poll.json`
+                    );
+
+                    StateService.setState({
+                        isTogglingElection: false
+                    });
+
+                    // Display poll results, preserving view
+                    MapService.displayPollResults(pollData, state.currentRidingNumber, true);
+
+                } catch (error) {
+                    console.error("Failed to load poll data for new year:", error);
+                    StateService.setState({ isTogglingElection: false });
+                    alert(`Failed to load ${year} poll data. Please try again.`);
+                }
+            } else {
+                // We're in riding view, use the normal toggle
+                await this.loadElectionResults(year, true);
+            }
+        },
+
+        async viewPollByPoll(ridingNumber) {
+            try {
+                const state = StateService.getState();
+                const year = state.currentElectionYear;
+
+                StateService.setState({ isTogglingElection: true });
+
+                // Close any open popups
+                MapService.map.closePopup();
+
+                // Load poll data for this riding
+                const pollData = await DataService.fetchGeoJSON(
+                    `election_boundaries_19-25/${year}_boundaries/geojson/poll_by_riding/${ridingNumber}_${year}_poll.json`
+                );
+
+                StateService.setState({
+                    currentViewLevel: 'poll',
+                    currentRidingNumber: ridingNumber,
+                    isTogglingElection: false
+                });
+
+                MapService.displayPollResults(pollData, ridingNumber);
+
+            } catch (error) {
+                console.error("Failed to load poll data:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert('Failed to load poll-by-poll data. Please try again.');
+            }
+        },
+
+        async toggleViewLevel(level) {
+            const state = StateService.getState();
+
+            if (level === 'riding') {
+                // Switch back to riding view
+                await this.loadElectionResults(state.currentElectionYear, true);
+                StateService.setState({ currentViewLevel: 'riding', currentRidingNumber: null });
+            } else if (level === 'poll' && state.currentRidingNumber) {
+                // Re-load poll view
+                await this.viewPollByPoll(state.currentRidingNumber);
+            }
         },
 
         returnToWelcome() {
@@ -1063,8 +1444,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentProvinceId: null,
                 currentElectionYear: null,
                 showingElections: false,
-                currentVisualization: null
+                currentVisualization: null,
+                currentRidingNumber: null,
+                currentViewLevel: 'riding'
             });
+            UIManager.hideElectionInfo();
             UIManager.resetToWelcome();
         },
         
@@ -1200,6 +1584,9 @@ document.addEventListener('DOMContentLoaded', () => {
         clearCache: () => CacheService.clear(),
         cache: CacheService
     };
+
+    // Expose App for inline onclick handlers
+    window.App = App;
 
     App.initialize();
 });

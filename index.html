@@ -40,6 +40,10 @@
                     <button id="toggle-2019-btn" class="election-toggle-btn">2019</button>
                     <button id="toggle-2021-btn" class="election-toggle-btn">2021</button>
                 </div>
+                <div class="election-toggle-buttons" id="view-level-toggle">
+                    <button id="toggle-riding-view-btn" class="election-toggle-btn active">Riding</button>
+                    <button id="toggle-poll-view-btn" class="election-toggle-btn">Poll</button>
+                </div>
                 <button id="change-election-btn">Change</button>
             </div>
         </div>
@@ -47,7 +51,18 @@
 
     <div class="main-container">
         <div id="map"></div>
-        
+
+        <!-- Election Info Side Panel -->
+        <div id="election-info-panel" class="election-info-panel hidden">
+            <div class="info-panel-header">
+                <h3 id="info-panel-title">Select a riding</h3>
+                <button id="info-panel-close" class="info-panel-close">&times;</button>
+            </div>
+            <div id="info-panel-content" class="info-panel-content">
+                <p class="info-panel-hint">Click on a riding or poll to see detailed results</p>
+            </div>
+        </div>
+
         <div id="welcome-overlay">
             <div class="welcome-content">
                 <h2>Canadian Demographics</h2>
@@ -82,6 +97,16 @@
         <div class="loading-spinner"></div>
         <p class="loading-text" id="loading-text"></p>
     </div>
+
+    <!-- SVG Patterns for Tied Polls -->
+    <svg width="0" height="0" style="position: absolute;">
+        <defs>
+            <pattern id="stripe-pattern" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="10" height="20" class="stripe-color-1" />
+                <rect x="10" width="10" height="20" class="stripe-color-2" />
+            </pattern>
+        </defs>
+    </svg>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 

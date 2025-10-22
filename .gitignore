@@ -5,6 +5,8 @@ boundaries/
 data_tiles/
 new_boundaries/
 output_data/
+election_boundaries_19-25/
+election_data_19-25/
 
 # Dependencies
 node_modules/

@@ -114,7 +114,9 @@ node join_data.js              # Alternative transformation script
 
 ### Data Processing Scripts
 
-- **transform_provinces.js**: Transforms province boundary files from EPSG:3347 to EPSG:4326, processing each province file individually
+- **transform_provinces.js**: Transforms province boundary files from EPSG:3347 to EPSG:4326, processing each province file individually. Works for files up to ~100MB. Modify the `provinces` object to transform specific provinces only.
+- **transform_large.js**: Handles larger files (100MB-400MB) using increased Node.js memory allocation. Run with: `node --max-old-space-size=8192 transform_large.js <code> <abbr>`
+- **transform_python.py**: Python-based transformer for very large files (400MB+). Requires `pip3 install pyproj`. Run with: `python3 transform_python.py <code> <abbr>`
 - **join_data.js**: Alternative transformation script using streaming JSON processing for large files
 - **joining/split_provinces.js**: Basic version that splits large national GeoJSON files by province (loads entire file into memory)
 - **joining/split_provinces_stream.js**: Streaming version for handling very large files without memory issues
@@ -150,11 +152,46 @@ All province/territory codes (PRUID values) used in the application:
 - 12: Nova Scotia (NS)
 - 13: New Brunswick (NB)
 - 24: Quebec (QC)
-- 35: Ontario (ON)
+- 35: Ontario (ON) - Large file: 585MB
 - 46: Manitoba (MB)
 - 47: Saskatchewan (SK)
 - 48: Alberta (AB)
-- 59: British Columbia (BC)
+- 59: British Columbia (BC) - Large file: 379MB
 - 60: Yukon (YT)
 - 61: Northwest Territories (NT)
-- 62: Nunavut (NU)
+- 62: Nunavut (NU) - Large file: 532MB
+
+## Critical Path Notes
+
+### File Path Requirements
+**IMPORTANT**: All file paths in [script.js](script.js) must be relative to the root directory (where [index.html](index.html) is located), NOT with `../` prefixes going up a directory. The application is served from the root, so paths should be:
+- ✅ CORRECT: `new_boundaries/provinces/da_10_NL_wgs84.geojson`
+- ❌ INCORRECT: `../new_boundaries/provinces/da_10_NL_wgs84.geojson`
+
+If provinces fail to load with "Could not load data" errors, check that no `../` prefixes have been added to paths in the `selectProvince` and `loadFederalData` functions.
+
+### Required File Format
+The application expects province boundary files to be:
+1. Named with `_wgs84` suffix: `da_[PRUID]_[ABBR]_wgs84.geojson`
+2. Already transformed to WGS84 (EPSG:4326) coordinate system
+3. GeoJSON format with valid `FeatureCollection` structure
+
+If a province fails to load, verify:
+- The `_wgs84.geojson` file exists in `new_boundaries/provinces/`
+- Coordinates are in WGS84 format (longitude/latitude, e.g., -63.4, 46.2)
+- NOT in EPSG:3347 format (large numbers like 8420430, 1659492)
+
+### Transforming Large Province Files
+For large provinces (ON, BC, NU), use the appropriate transformation tool:
+```bash
+# For files < 100MB (NL, PE, NS, NB, QC, MB, SK, AB, YT, NT)
+node transform_provinces.js
+
+# For files 100-400MB (BC)
+node --max-old-space-size=8192 transform_large.js 59 BC
+
+# For files > 400MB (ON, NU)
+pip3 install pyproj
+python3 transform_python.py 35 ON
+python3 transform_python.py 62 NU
+```

@@ -147,19 +147,16 @@ document.addEventListener('DOMContentLoaded', () => {
             isLoading: false,
             loadingMessage: '',
             hasLoadedFederalData: false,
-            // Poll View Mode state
-            showingPollView: false,
-            pollViewProvinceId: null,
-            pollViewYear: '2021',
-            pollViewData: null,
-            showPollViewRidingBoundaries: false,
-            pollViewRidingData: null,
-            // Party Analysis Mode state
-            showingPartyAnalysis: false,
-            partyAnalysisProvinceId: null,
-            partyAnalysisYear: '2021',
-            partyAnalysisParty: null,
-            partyAnalysisData: null
+            // Unified Election Mode state
+            showingElections: false,
+            electionMode: 'riding', // 'riding', 'poll', 'party'
+            electionYear: '2021', // '2019', '2021', '2025' (2025 only for poll mode)
+            electionProvinceId: null, // For poll and party modes
+            electionParty: null, // For party mode
+            electionData: null,
+            currentRidingNumber: null, // For drill-down in riding mode
+            currentViewLevel: 'riding', // 'riding', 'poll', 'advance' (for riding mode drill-down)
+            isTogglingElection: false
         },
         _listeners: [],
 
@@ -355,6 +352,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.map.removeLayer(this.electionLayer);
                 this.electionLayer = null;
             }
+            if (this.partyAnalysisLayer) {
+                this.map.removeLayer(this.partyAnalysisLayer);
+                this.partyAnalysisLayer = null;
+            }
+            if (this.selectedPollLayer) {
+                this.map.removeLayer(this.selectedPollLayer);
+                this.selectedPollLayer = null;
+            }
+            if (this.pollViewRidingBoundariesLayer) {
+                this.map.removeLayer(this.pollViewRidingBoundariesLayer);
+                this.pollViewRidingBoundariesLayer = null;
+            }
         },
 
         displayBoundaries(geoData, boundaryType = 'DA') {
@@ -472,11 +481,8 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         displayPartyVoteShare(pollData, party, preserveView = false) {
-            // Clear existing party analysis layer
-            if (this.partyAnalysisLayer) {
-                this.map.removeLayer(this.partyAnalysisLayer);
-                this.partyAnalysisLayer = null;
-            }
+            // Clear ALL existing layers before showing party analysis
+            this.clearLayers();
 
             // Get the base color for this party
             const getPartyBaseColor = (partyName) => {
@@ -1289,6 +1295,25 @@ document.addEventListener('DOMContentLoaded', () => {
             backToWelcomeFromPartyBtn: document.getElementById('back-to-welcome-from-party-btn'),
             backToPartyProvinceBtn: document.getElementById('back-to-party-province-btn'),
             partySelectionProvinceName: document.getElementById('party-selection-province-name'),
+            // Unified Election Controls
+            unifiedElectionControls: document.getElementById('unified-election-controls'),
+            modeRidingBtn: document.getElementById('mode-riding-btn'),
+            modePollBtn: document.getElementById('mode-poll-btn'),
+            modePartyBtn: document.getElementById('mode-party-btn'),
+            year2019Btn: document.getElementById('year-2019-btn'),
+            year2021Btn: document.getElementById('year-2021-btn'),
+            year2025Btn: document.getElementById('year-2025-btn'),
+            provinceSelectorGroup: document.getElementById('province-selector-group'),
+            partySelectorGroup: document.getElementById('party-selector-group'),
+            selectProvinceBtn: document.getElementById('select-province-btn'),
+            selectPartyBtn: document.getElementById('select-party-btn'),
+            exitElectionBtn: document.getElementById('exit-election-btn'),
+            // Unified Overlays
+            electionProvinceOverlay: document.getElementById('election-province-overlay'),
+            electionProvinceGrid: document.getElementById('election-province-grid'),
+            cancelProvinceSelectionBtn: document.getElementById('cancel-province-selection-btn'),
+            electionPartyOverlay: document.getElementById('election-party-overlay'),
+            cancelPartySelectionBtn: document.getElementById('cancel-party-selection-btn'),
         },
 
         initialize() {
@@ -1297,7 +1322,69 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.openControlsBtn.addEventListener('click', () => this.setPanelOpen(true));
             this.elements.changeProvinceBtn.addEventListener('click', () => App.returnToWelcome());
 
-            // Add election button listeners
+            // Add UNIFIED election button listeners
+            const viewElectionBtn = document.getElementById('view-election-btn');
+            console.log("View election button found:", viewElectionBtn);
+            if (viewElectionBtn) {
+                viewElectionBtn.addEventListener('click', () => {
+                    console.log("Explore Elections button clicked!");
+                    App.enterElectionMode();
+                });
+            } else {
+                console.error("View election button NOT found in DOM!");
+            }
+
+            // Unified Mode Buttons
+            if (this.elements.modeRidingBtn) {
+                this.elements.modeRidingBtn.addEventListener('click', () => App.switchElectionMode('riding'));
+            }
+            if (this.elements.modePollBtn) {
+                this.elements.modePollBtn.addEventListener('click', () => App.switchElectionMode('poll'));
+            }
+            if (this.elements.modePartyBtn) {
+                this.elements.modePartyBtn.addEventListener('click', () => App.switchElectionMode('party'));
+            }
+
+            // Unified Year Buttons
+            if (this.elements.year2019Btn) {
+                this.elements.year2019Btn.addEventListener('click', () => App.switchElectionYear('2019'));
+            }
+            if (this.elements.year2021Btn) {
+                this.elements.year2021Btn.addEventListener('click', () => App.switchElectionYear('2021'));
+            }
+            if (this.elements.year2025Btn) {
+                this.elements.year2025Btn.addEventListener('click', () => App.switchElectionYear('2025'));
+            }
+
+            // Province/Party Selector Buttons
+            if (this.elements.selectProvinceBtn) {
+                this.elements.selectProvinceBtn.addEventListener('click', () => {
+                    const state = StateService.getState();
+                    UIManager.showProvinceSelector(state.electionMode);
+                });
+            }
+            if (this.elements.selectPartyBtn) {
+                this.elements.selectPartyBtn.addEventListener('click', () => UIManager.showPartySelector());
+            }
+
+            // Exit Election Button
+            if (this.elements.exitElectionBtn) {
+                this.elements.exitElectionBtn.addEventListener('click', () => App.returnToWelcome());
+            }
+
+            // Cancel Overlay Buttons
+            if (this.elements.cancelProvinceSelectionBtn) {
+                this.elements.cancelProvinceSelectionBtn.addEventListener('click', () => {
+                    this.elements.electionProvinceOverlay.classList.add('hidden');
+                });
+            }
+            if (this.elements.cancelPartySelectionBtn) {
+                this.elements.cancelPartySelectionBtn.addEventListener('click', () => {
+                    this.elements.electionPartyOverlay.classList.add('hidden');
+                });
+            }
+
+            // OLD ELECTION LISTENERS (keeping for backward compatibility during transition)
             const election2019Btn = document.getElementById('view-2019-election-btn');
             const election2021Btn = document.getElementById('view-2021-election-btn');
             if (election2019Btn) {
@@ -1388,10 +1475,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setupPartyButtons() {
             const partyButtons = document.querySelectorAll('.party-button');
+            console.log("Setting up party buttons, found:", partyButtons.length);
             partyButtons.forEach(button => {
                 button.addEventListener('click', () => {
                     const party = button.getAttribute('data-party');
-                    App.selectParty(party);
+                    const state = StateService.getState();
+                    console.log("Party button clicked:", party);
+                    console.log("Current state - showingElections:", state.showingElections, "electionMode:", state.electionMode);
+
+                    // Check if we're in unified mode
+                    if (state.showingElections && state.electionMode === 'party') {
+                        console.log("Calling selectElectionParty");
+                        App.selectElectionParty(party);
+                    } else {
+                        // Old party analysis mode
+                        console.log("Calling old selectParty");
+                        App.selectParty(party);
+                    }
                 });
             });
         },
@@ -1505,6 +1605,12 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handleStateChange(state) {
+            console.log("=== handleStateChange called ===");
+            console.log("State:", state);
+            console.log("showingElections:", state.showingElections);
+            console.log("electionMode:", state.electionMode);
+            console.log("electionYear:", state.electionYear);
+
             // Update Panel
             if (state.isPanelOpen !== this.elements.controlPanel.classList.contains('open')) {
                 this.elements.controlPanel.classList.toggle('open', state.isPanelOpen);
@@ -1527,56 +1633,91 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.provinceDisplay.classList.add('hidden');
             }
 
-            // Update Election Display
-            if (state.showingElections && state.currentElectionYear) {
-                this.elements.electionYear.textContent = `${state.currentElectionYear} Election`;
+            // Update Election Display (OLD - for backward compatibility)
+            if (state.showingElections && state.currentElectionYear && this.elements.electionDisplay) {
+                if (this.elements.electionYear) {
+                    this.elements.electionYear.textContent = `${state.currentElectionYear} Election`;
+                }
                 this.elements.electionDisplay.classList.remove('hidden');
-                this.elements.provinceDisplay.classList.add('hidden');
+                if (this.elements.provinceDisplay) {
+                    this.elements.provinceDisplay.classList.add('hidden');
+                }
 
                 // Update active button state
-                this.elements.toggle2019Btn.classList.toggle('active', state.currentElectionYear === '2019');
-                this.elements.toggle2021Btn.classList.toggle('active', state.currentElectionYear === '2021');
+                if (this.elements.toggle2019Btn) {
+                    this.elements.toggle2019Btn.classList.toggle('active', state.currentElectionYear === '2019');
+                }
+                if (this.elements.toggle2021Btn) {
+                    this.elements.toggle2021Btn.classList.toggle('active', state.currentElectionYear === '2021');
+                }
 
                 // Show/hide loading state on toggle buttons
                 if (state.isTogglingElection) {
-                    this.elements.toggle2019Btn.disabled = true;
-                    this.elements.toggle2021Btn.disabled = true;
-                    this.elements.toggle2019Btn.classList.add('loading');
-                    this.elements.toggle2021Btn.classList.add('loading');
+                    if (this.elements.toggle2019Btn) {
+                        this.elements.toggle2019Btn.disabled = true;
+                        this.elements.toggle2019Btn.classList.add('loading');
+                    }
+                    if (this.elements.toggle2021Btn) {
+                        this.elements.toggle2021Btn.disabled = true;
+                        this.elements.toggle2021Btn.classList.add('loading');
+                    }
                 } else {
-                    this.elements.toggle2019Btn.disabled = false;
-                    this.elements.toggle2021Btn.disabled = false;
-                    this.elements.toggle2019Btn.classList.remove('loading');
-                    this.elements.toggle2021Btn.classList.remove('loading');
+                    if (this.elements.toggle2019Btn) {
+                        this.elements.toggle2019Btn.disabled = false;
+                        this.elements.toggle2019Btn.classList.remove('loading');
+                    }
+                    if (this.elements.toggle2021Btn) {
+                        this.elements.toggle2021Btn.disabled = false;
+                        this.elements.toggle2021Btn.classList.remove('loading');
+                    }
                 }
 
                 // Update view level toggle - always visible when showing elections
                 const viewLevel = state.currentViewLevel || 'riding';
-                this.elements.toggleRidingViewBtn.classList.toggle('active', viewLevel === 'riding');
-                this.elements.togglePollViewBtn.classList.toggle('active', viewLevel === 'poll');
-                this.elements.toggleAdvViewBtn.classList.toggle('active', viewLevel === 'advance');
-
-                // Disable poll and advance buttons when in riding view (no riding selected yet)
-                this.elements.togglePollViewBtn.disabled = !state.currentRidingNumber;
-                this.elements.togglePollViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
-                this.elements.toggleAdvViewBtn.disabled = !state.currentRidingNumber;
-                this.elements.toggleAdvViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
+                if (this.elements.toggleRidingViewBtn) {
+                    this.elements.toggleRidingViewBtn.classList.toggle('active', viewLevel === 'riding');
+                }
+                if (this.elements.togglePollViewBtn) {
+                    this.elements.togglePollViewBtn.classList.toggle('active', viewLevel === 'poll');
+                    // Disable poll and advance buttons when in riding view (no riding selected yet)
+                    this.elements.togglePollViewBtn.disabled = !state.currentRidingNumber;
+                    this.elements.togglePollViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
+                }
+                if (this.elements.toggleAdvViewBtn) {
+                    this.elements.toggleAdvViewBtn.classList.toggle('active', viewLevel === 'advance');
+                    this.elements.toggleAdvViewBtn.disabled = !state.currentRidingNumber;
+                    this.elements.toggleAdvViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
+                }
             } else {
-                this.elements.electionDisplay.classList.add('hidden');
+                if (this.elements.electionDisplay) {
+                    this.elements.electionDisplay.classList.add('hidden');
+                }
             }
 
-            // Update Poll View Display
-            if (state.showingPollView && state.pollViewProvinceId) {
+            // Update Poll View Display (OLD - for backward compatibility)
+            if (state.showingPollView && state.pollViewProvinceId && this.elements.pollViewDisplay) {
                 const province = PROVINCES[state.pollViewProvinceId];
-                this.elements.pollViewProvinceName.textContent = `${province.name} Polls`;
+                if (this.elements.pollViewProvinceName) {
+                    this.elements.pollViewProvinceName.textContent = `${province.name} Polls`;
+                }
                 this.elements.pollViewDisplay.classList.remove('hidden');
-                this.elements.provinceDisplay.classList.add('hidden');
-                this.elements.electionDisplay.classList.add('hidden');
+                if (this.elements.provinceDisplay) {
+                    this.elements.provinceDisplay.classList.add('hidden');
+                }
+                if (this.elements.electionDisplay) {
+                    this.elements.electionDisplay.classList.add('hidden');
+                }
 
                 // Update active year button
-                this.elements.pollToggle2019Btn.classList.toggle('active', state.pollViewYear === '2019');
-                this.elements.pollToggle2021Btn.classList.toggle('active', state.pollViewYear === '2021');
-                this.elements.pollToggle2025Btn.classList.toggle('active', state.pollViewYear === '2025');
+                if (this.elements.pollToggle2019Btn) {
+                    this.elements.pollToggle2019Btn.classList.toggle('active', state.pollViewYear === '2019');
+                }
+                if (this.elements.pollToggle2021Btn) {
+                    this.elements.pollToggle2021Btn.classList.toggle('active', state.pollViewYear === '2021');
+                }
+                if (this.elements.pollToggle2025Btn) {
+                    this.elements.pollToggle2025Btn.classList.toggle('active', state.pollViewYear === '2025');
+                }
 
                 // Update riding boundaries button text
                 if (this.elements.toggleRidingBoundariesBtn) {
@@ -1584,23 +1725,123 @@ document.addEventListener('DOMContentLoaded', () => {
                         state.showPollViewRidingBoundaries ? 'Hide Riding Boundaries' : 'Show Riding Boundaries';
                 }
             } else {
-                this.elements.pollViewDisplay.classList.add('hidden');
+                if (this.elements.pollViewDisplay) {
+                    this.elements.pollViewDisplay.classList.add('hidden');
+                }
             }
 
-            // Update Party Analysis Display
-            if (state.showingPartyAnalysis && state.partyAnalysisProvinceId && state.partyAnalysisParty) {
+            // Update Party Analysis Display (OLD - for backward compatibility)
+            if (state.showingPartyAnalysis && state.partyAnalysisProvinceId && state.partyAnalysisParty && this.elements.partyAnalysisDisplay) {
                 const province = PROVINCES[state.partyAnalysisProvinceId];
-                this.elements.partyAnalysisInfo.textContent = `${state.partyAnalysisParty} - ${province.name}`;
+                if (this.elements.partyAnalysisInfo) {
+                    this.elements.partyAnalysisInfo.textContent = `${state.partyAnalysisParty} - ${province.name}`;
+                }
                 this.elements.partyAnalysisDisplay.classList.remove('hidden');
-                this.elements.provinceDisplay.classList.add('hidden');
-                this.elements.electionDisplay.classList.add('hidden');
-                this.elements.pollViewDisplay.classList.add('hidden');
+                if (this.elements.provinceDisplay) {
+                    this.elements.provinceDisplay.classList.add('hidden');
+                }
+                if (this.elements.electionDisplay) {
+                    this.elements.electionDisplay.classList.add('hidden');
+                }
+                if (this.elements.pollViewDisplay) {
+                    this.elements.pollViewDisplay.classList.add('hidden');
+                }
 
                 // Update active year button
-                this.elements.partyToggle2019Btn.classList.toggle('active', state.partyAnalysisYear === '2019');
-                this.elements.partyToggle2021Btn.classList.toggle('active', state.partyAnalysisYear === '2021');
+                if (this.elements.partyToggle2019Btn) {
+                    this.elements.partyToggle2019Btn.classList.toggle('active', state.partyAnalysisYear === '2019');
+                }
+                if (this.elements.partyToggle2021Btn) {
+                    this.elements.partyToggle2021Btn.classList.toggle('active', state.partyAnalysisYear === '2021');
+                }
             } else {
-                this.elements.partyAnalysisDisplay.classList.add('hidden');
+                if (this.elements.partyAnalysisDisplay) {
+                    this.elements.partyAnalysisDisplay.classList.add('hidden');
+                }
+            }
+
+            // UNIFIED ELECTION CONTROLS
+            if (state.showingElections) {
+                console.log("State shows elections active, updating UI controls...");
+                console.log("Unified controls element:", this.elements.unifiedElectionControls);
+
+                // Show unified controls, hide all old displays
+                if (this.elements.unifiedElectionControls) {
+                    this.elements.unifiedElectionControls.classList.remove('hidden');
+                    console.log("Unified controls should now be visible");
+                } else {
+                    console.error("Unified election controls element not found!");
+                }
+
+                // Hide old displays (with null checks)
+                if (this.elements.provinceDisplay) {
+                    this.elements.provinceDisplay.classList.add('hidden');
+                }
+                if (this.elements.electionDisplay) {
+                    this.elements.electionDisplay.classList.add('hidden');
+                }
+                if (this.elements.pollViewDisplay) {
+                    this.elements.pollViewDisplay.classList.add('hidden');
+                }
+                if (this.elements.partyAnalysisDisplay) {
+                    this.elements.partyAnalysisDisplay.classList.add('hidden');
+                }
+
+                // Update mode buttons
+                if (this.elements.modeRidingBtn) {
+                    this.elements.modeRidingBtn.classList.toggle('active', state.electionMode === 'riding');
+                }
+                if (this.elements.modePollBtn) {
+                    this.elements.modePollBtn.classList.toggle('active', state.electionMode === 'poll');
+                }
+                if (this.elements.modePartyBtn) {
+                    this.elements.modePartyBtn.classList.toggle('active', state.electionMode === 'party');
+                }
+
+                // Update year buttons
+                if (this.elements.year2019Btn) {
+                    this.elements.year2019Btn.classList.toggle('active', state.electionYear === '2019');
+                }
+                if (this.elements.year2021Btn) {
+                    this.elements.year2021Btn.classList.toggle('active', state.electionYear === '2021');
+                }
+                if (this.elements.year2025Btn) {
+                    this.elements.year2025Btn.classList.toggle('active', state.electionYear === '2025');
+                    // Show 2025 button for all modes now that boundaries are available
+                    this.elements.year2025Btn.classList.remove('hidden');
+                }
+
+                // Disable year buttons while loading
+                const yearButtons = [this.elements.year2019Btn, this.elements.year2021Btn, this.elements.year2025Btn];
+                yearButtons.forEach(btn => {
+                    if (btn) {
+                        btn.disabled = state.isTogglingElection;
+                        btn.classList.toggle('loading', state.isTogglingElection && btn.classList.contains('active'));
+                    }
+                });
+
+                // Show/hide province selector group (for poll and party modes)
+                const needsProvince = state.electionMode === 'poll' || state.electionMode === 'party';
+                if (this.elements.provinceSelectorGroup) {
+                    this.elements.provinceSelectorGroup.classList.toggle('hidden', !needsProvince);
+                }
+
+                if (needsProvince && state.electionProvinceId && this.elements.selectProvinceBtn) {
+                    const province = PROVINCES[state.electionProvinceId];
+                    this.elements.selectProvinceBtn.textContent = province.abbr;
+                }
+
+                // Show/hide party selector group (only for party mode)
+                if (this.elements.partySelectorGroup) {
+                    this.elements.partySelectorGroup.classList.toggle('hidden', state.electionMode !== 'party');
+                }
+
+                if (state.electionMode === 'party' && state.electionParty && this.elements.selectPartyBtn) {
+                    this.elements.selectPartyBtn.textContent = state.electionParty;
+                }
+
+            } else {
+                this.elements.unifiedElectionControls.classList.add('hidden');
             }
 
             // Update Legend
@@ -1617,6 +1858,45 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         },
 
+        // UNIFIED ELECTION SELECTORS
+        showProvinceSelector(mode) {
+            // Clear and populate the unified province grid
+            this.elements.electionProvinceGrid.innerHTML = '';
+
+            Object.entries(PROVINCES).forEach(([code, { name, abbr }]) => {
+                const button = document.createElement('button');
+                button.className = 'province-button';
+                button.innerHTML = `<div class="abbr">${abbr}</div><div class="name">${name}</div>`;
+                button.addEventListener('click', () => App.selectElectionProvince(code, mode));
+                this.elements.electionProvinceGrid.appendChild(button);
+            });
+
+            // Update description based on mode
+            const description = document.getElementById('province-overlay-description');
+            if (description) {
+                description.textContent = mode === 'poll'
+                    ? 'Choose which province to view poll-level results'
+                    : 'Choose which province for party analysis';
+            }
+
+            // Show the overlay
+            this.elements.electionProvinceOverlay.classList.remove('hidden');
+        },
+
+        showPartySelector() {
+            // Show the party selection overlay
+            this.elements.electionPartyOverlay.classList.remove('hidden');
+
+            // Update description with province name
+            const state = StateService.getState();
+            const provinceName = PROVINCES[state.electionProvinceId]?.name || '';
+            const description = document.getElementById('party-overlay-description');
+            if (description) {
+                description.textContent = `Analyzing polls in ${provinceName}`;
+            }
+        },
+
+        // OLD SELECTORS (keeping for now)
         renderPollProvinceSelector() {
             // Clear existing grid
             this.elements.pollProvinceGrid.innerHTML = '';
@@ -1900,6 +2180,279 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        // === UNIFIED ELECTION MODE ===
+        // Entry point for election mode - loads riding view by default
+        async enterElectionMode() {
+            console.log("Entering election mode...");
+            try {
+                UIManager.showWelcome(false);
+                StateService.setState({
+                    isLoading: true,
+                    loadingMessage: 'Loading election results...',
+                    showingElections: true,
+                    electionMode: 'riding',
+                    electionYear: '2021'
+                });
+
+                console.log("Loading election data...");
+                // Load 2021 riding data by default
+                const electionData = await DataService.fetchGeoJSON('election_boundaries_19-25/2021_boundaries/geojson/2021_riding_with_results_min.json');
+
+                console.log("Election data loaded, updating state...");
+                StateService.setState({
+                    electionData,
+                    isLoading: false
+                });
+
+                console.log("Displaying election results on map...");
+                MapService.displayElectionResults(electionData, false);
+                console.log("Election mode entered successfully!");
+
+            } catch (error) {
+                console.error("Failed to enter election mode:", error);
+                StateService.setState({ isLoading: false, showingElections: false });
+                UIManager.showWelcome(true);
+                alert('Failed to load election results. Please check the console for details.');
+            }
+        },
+
+        // Switch between riding/poll/party modes
+        async switchElectionMode(mode) {
+            const state = StateService.getState();
+
+            if (mode === 'riding') {
+                // Switch to riding mode
+                await this.loadRidingMode(state.electionYear);
+            } else if (mode === 'poll') {
+                // Show province selector for poll mode
+                if (!state.electionProvinceId) {
+                    UIManager.showProvinceSelector('poll');
+                } else {
+                    await this.loadPollMode(state.electionProvinceId, state.electionYear);
+                }
+            } else if (mode === 'party') {
+                // Show province selector, then party selector
+                if (!state.electionProvinceId) {
+                    UIManager.showProvinceSelector('party');
+                } else if (!state.electionParty) {
+                    // Set mode to party BEFORE showing party selector
+                    StateService.setState({ electionMode: 'party' });
+                    UIManager.showPartySelector();
+                } else {
+                    await this.loadPartyMode(state.electionProvinceId, state.electionParty, state.electionYear);
+                }
+            }
+        },
+
+        // Load riding mode (national view)
+        async loadRidingMode(year) {
+            try {
+                StateService.setState({ isTogglingElection: true });
+
+                const electionData = await DataService.fetchGeoJSON(`election_boundaries_19-25/${year}_boundaries/geojson/${year}_riding_with_results_min.json`);
+
+                StateService.setState({
+                    electionMode: 'riding',
+                    electionYear: year,
+                    electionData,
+                    electionProvinceId: null,
+                    electionParty: null,
+                    currentRidingNumber: null,
+                    currentViewLevel: 'riding',
+                    isTogglingElection: false
+                });
+
+                MapService.displayElectionResults(electionData, true);
+
+            } catch (error) {
+                console.error("Failed to load riding mode:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert(`Failed to load ${year} election results.`);
+            }
+        },
+
+        // Load poll mode (province-level view)
+        async loadPollMode(provinceId, year) {
+            try {
+                StateService.setState({ isTogglingElection: true });
+
+                const abbr = PROVINCES[provinceId].abbr;
+                const cacheKey = `election_boundaries_19-25/${year}_boundaries/geojson/poll_by_province/${provinceId}_${abbr}_${year}_poll.json`;
+
+                let pollData = await CacheService.get(cacheKey);
+                if (!pollData) {
+                    pollData = await DataService.fetchGeoJSON(cacheKey);
+                    await CacheService.set(cacheKey, pollData);
+                }
+
+                StateService.setState({
+                    electionMode: 'poll',
+                    electionYear: year,
+                    electionProvinceId: provinceId,
+                    electionData: pollData,
+                    electionParty: null,
+                    isTogglingElection: false
+                });
+
+                MapService.displayPollResults(pollData, null, true);
+
+            } catch (error) {
+                console.error("Failed to load poll mode:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert(`Failed to load poll data for ${PROVINCES[provinceId].name}.`);
+            }
+        },
+
+        // Load party mode (province-level party analysis)
+        async loadPartyMode(provinceId, party, year) {
+            try {
+                StateService.setState({ isTogglingElection: true });
+
+                const abbr = PROVINCES[provinceId].abbr;
+                const cacheKey = `election_boundaries_19-25/${year}_boundaries/geojson/poll_by_province/${provinceId}_${abbr}_${year}_poll.json`;
+
+                let pollData = await CacheService.get(cacheKey);
+                if (!pollData) {
+                    pollData = await DataService.fetchGeoJSON(cacheKey);
+                    await CacheService.set(cacheKey, pollData);
+                }
+
+                StateService.setState({
+                    electionMode: 'party',
+                    electionYear: year,
+                    electionProvinceId: provinceId,
+                    electionParty: party,
+                    electionData: pollData,
+                    isTogglingElection: false
+                });
+
+                MapService.displayPartyVoteShare(pollData, party, true);
+
+            } catch (error) {
+                console.error("Failed to load party mode:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert(`Failed to load party analysis for ${PROVINCES[provinceId].name}.`);
+            }
+        },
+
+        // Switch election year
+        async switchElectionYear(year) {
+            const state = StateService.getState();
+
+            if (state.electionMode === 'riding') {
+                // Check if we're in drill-down view
+                if (state.currentViewLevel === 'poll' && state.currentRidingNumber) {
+                    await this.loadRidingPollView(state.currentRidingNumber, year);
+                } else if (state.currentViewLevel === 'advance' && state.currentRidingNumber) {
+                    await this.loadRidingAdvanceView(state.currentRidingNumber, year);
+                } else {
+                    await this.loadRidingMode(year);
+                }
+            } else if (state.electionMode === 'poll') {
+                await this.loadPollMode(state.electionProvinceId, year);
+            } else if (state.electionMode === 'party') {
+                await this.loadPartyMode(state.electionProvinceId, state.electionParty, year);
+            }
+        },
+
+        // Drill-down views for riding mode
+        async loadRidingPollView(ridingNumber, year) {
+            try {
+                StateService.setState({ isTogglingElection: true });
+
+                const pollData = await DataService.fetchGeoJSON(
+                    `election_boundaries_19-25/${year}_boundaries/geojson/poll_by_riding/${ridingNumber}_${year}_poll.json`
+                );
+
+                StateService.setState({
+                    electionYear: year,
+                    currentViewLevel: 'poll',
+                    currentRidingNumber: ridingNumber,
+                    isTogglingElection: false
+                });
+
+                MapService.displayPollResults(pollData, ridingNumber, true);
+
+            } catch (error) {
+                console.error("Failed to load poll view:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert(`Failed to load poll data for riding ${ridingNumber}.`);
+            }
+        },
+
+        async loadRidingAdvanceView(ridingNumber, year) {
+            try {
+                StateService.setState({ isTogglingElection: true });
+
+                const advData = await DataService.fetchGeoJSON(
+                    `election_boundaries_19-25/${year}_boundaries/geojson/adv_by_riding/${ridingNumber}_${year}_adv.json`
+                );
+
+                StateService.setState({
+                    electionYear: year,
+                    currentViewLevel: 'advance',
+                    currentRidingNumber: ridingNumber,
+                    isTogglingElection: false
+                });
+
+                MapService.displayAdvanceResults(advData, ridingNumber, true);
+
+            } catch (error) {
+                console.error("Failed to load advance view:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert(`Failed to load advance poll data for riding ${ridingNumber}.`);
+            }
+        },
+
+        // Toggle view level in riding mode (riding/poll/advance)
+        async toggleRidingViewLevel(level) {
+            const state = StateService.getState();
+
+            if (level === 'riding') {
+                await this.loadRidingMode(state.electionYear);
+            } else if (level === 'poll' && state.currentRidingNumber) {
+                await this.loadRidingPollView(state.currentRidingNumber, state.electionYear);
+            } else if (level === 'advance' && state.currentRidingNumber) {
+                await this.loadRidingAdvanceView(state.currentRidingNumber, state.electionYear);
+            }
+        },
+
+        // Handle province selection in unified mode
+        async selectElectionProvince(provinceId, mode) {
+            // Hide the province overlay
+            UIManager.elements.electionProvinceOverlay.classList.add('hidden');
+
+            const state = StateService.getState();
+
+            if (mode === 'poll') {
+                await this.loadPollMode(provinceId, state.electionYear);
+            } else if (mode === 'party') {
+                // Set province and mode
+                StateService.setState({
+                    electionProvinceId: provinceId,
+                    electionMode: 'party'
+                });
+
+                // If party is already selected, reload party mode with new province
+                // Otherwise, show party selector
+                if (state.electionParty) {
+                    await this.loadPartyMode(provinceId, state.electionParty, state.electionYear);
+                } else {
+                    UIManager.showPartySelector();
+                }
+            }
+        },
+
+        // Handle party selection in unified mode
+        async selectElectionParty(party) {
+            // Hide the party overlay
+            UIManager.elements.electionPartyOverlay.classList.add('hidden');
+
+            const state = StateService.getState();
+            await this.loadPartyMode(state.electionProvinceId, party, state.electionYear);
+        },
+
+        // OLD FUNCTION - KEEPING FOR COMPATIBILITY (will remove later)
         async loadElectionResults(year, isToggle = false) {
             try {
                 // For toggles, show inline loading; for initial load, show full screen loading
@@ -2081,6 +2634,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentVisualization: null,
                 currentRidingNumber: null,
                 currentViewLevel: 'riding',
+                // Reset unified election state
+                electionMode: 'riding',
+                electionYear: '2021',
+                electionProvinceId: null,
+                electionParty: null,
+                electionData: null,
                 // Reset poll view state
                 showingPollView: false,
                 pollViewProvinceId: null,

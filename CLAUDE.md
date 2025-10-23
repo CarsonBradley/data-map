@@ -65,6 +65,10 @@ node split_polls_by_province.js 2025   # Split 2025 polls by province
 # Merge election results into province-level poll files
 node merge_poll_results_to_provinces.js 2019  # Merge 2019 results into province files
 node merge_poll_results_to_provinces.js 2021  # Merge 2021 results into province files
+
+# Create placeholder files for 2025 (boundaries without election results - displays grey)
+node create_2025_riding_placeholder.js         # Create 2025 riding file with empty results
+node add_2025_poll_placeholders.js             # Add empty pollResults to 2025 province poll files
 ```
 
 ## Architecture
@@ -203,6 +207,10 @@ The application includes a comprehensive election results visualization system:
 **Poll View Data Processing:**
 - **split_polls_by_province.js**: Groups poll boundaries by province for Poll View mode. Takes year as argument (2019, 2021, or 2025). Extracts province code (PRUID) from first 2 digits of FED_NUM property. Creates one JSON file per province in `poll_by_province/` directory. Significantly reduces file sizes compared to national file (~30-100 MB per province vs. 424 MB national).
 - **merge_poll_results_to_provinces.js**: Merges election results from `poll_by_riding/` files into province-level poll files. Takes year as argument (2019 or 2021). Builds a map of all poll results by FED_NUM and PD_NUM, then merges into corresponding province files. Must be run after `split_polls_by_province.js` and requires `poll_by_riding/` files to exist.
+
+**2025 Placeholder Data Processing:**
+- **create_2025_riding_placeholder.js**: Creates placeholder riding file for 2025 with boundaries but empty election results. Reads `2025_riding_wgs84.json` and adds empty `electionResults` structure to each feature. Output file: `2025_riding_with_results_min.json`. Ridings display in grey until actual election results are added. Run once when 2025 boundaries are available.
+- **add_2025_poll_placeholders.js**: Adds empty `pollResults` property to all 2025 province poll files. Processes all files in `poll_by_province/` directory ending in `_2025_poll.json`. Each poll gets empty candidates array and null winner. Polls display in grey until actual election results are merged. Run after `split_polls_by_province.js 2025`.
 
 ### File Structure
 

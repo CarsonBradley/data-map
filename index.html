@@ -35,37 +35,33 @@
                 <span id="province-name"></span>
                 <button id="change-province-btn">Change</button>
             </div>
-            <div id="election-display" class="hidden">
-                <span id="election-year"></span>
-                <div class="election-toggle-buttons">
-                    <button id="toggle-2019-btn" class="election-toggle-btn">2019</button>
-                    <button id="toggle-2021-btn" class="election-toggle-btn">2021</button>
+            <!-- Unified Election Controls -->
+            <div id="unified-election-controls" class="hidden" style="border: 3px solid red;">
+                <div class="election-control-group">
+                    <label class="control-label">View:</label>
+                    <div class="election-toggle-buttons">
+                        <button id="mode-riding-btn" class="election-toggle-btn active">Riding</button>
+                        <button id="mode-poll-btn" class="election-toggle-btn">Poll</button>
+                        <button id="mode-party-btn" class="election-toggle-btn">Party</button>
+                    </div>
                 </div>
-                <div class="election-toggle-buttons" id="view-level-toggle">
-                    <button id="toggle-riding-view-btn" class="election-toggle-btn active">Riding</button>
-                    <button id="toggle-poll-view-btn" class="election-toggle-btn">Poll</button>
-                    <button id="toggle-adv-view-btn" class="election-toggle-btn">Advance</button>
+                <div class="election-control-group">
+                    <label class="control-label">Year:</label>
+                    <div class="election-toggle-buttons">
+                        <button id="year-2019-btn" class="election-toggle-btn">2019</button>
+                        <button id="year-2021-btn" class="election-toggle-btn active">2021</button>
+                        <button id="year-2025-btn" class="election-toggle-btn">2025</button>
+                    </div>
                 </div>
-                <button id="change-election-btn">Change</button>
-            </div>
-            <div id="poll-view-display" class="hidden">
-                <span id="poll-view-province-name"></span>
-                <div class="election-toggle-buttons">
-                    <button id="poll-toggle-2019-btn" class="election-toggle-btn">2019</button>
-                    <button id="poll-toggle-2021-btn" class="election-toggle-btn">2021</button>
-                    <button id="poll-toggle-2025-btn" class="election-toggle-btn">2025</button>
+                <div class="election-control-group hidden" id="province-selector-group">
+                    <label class="control-label">Province:</label>
+                    <button id="select-province-btn" class="control-button">Select Province</button>
                 </div>
-                <button id="toggle-riding-boundaries-btn" class="header-button">Show Riding Boundaries</button>
-                <button id="change-poll-province-btn">Change Province</button>
-            </div>
-            <div id="party-analysis-display" class="hidden">
-                <span id="party-analysis-info"></span>
-                <div class="election-toggle-buttons">
-                    <button id="party-toggle-2019-btn" class="election-toggle-btn">2019</button>
-                    <button id="party-toggle-2021-btn" class="election-toggle-btn">2021</button>
+                <div class="election-control-group hidden" id="party-selector-group">
+                    <label class="control-label">Party:</label>
+                    <button id="select-party-btn" class="control-button">Select Party</button>
                 </div>
-                <button id="change-party-btn" class="header-button">Change Party</button>
-                <button id="change-party-province-btn">Change Province</button>
+                <button id="exit-election-btn" class="control-button-secondary">Exit</button>
             </div>
         </div>
     </header>
@@ -96,46 +92,27 @@
                 <div class="province-grid" id="province-grid"></div>
                 <div class="election-section">
                     <h3>Federal Election Results</h3>
-                    <div class="election-buttons">
-                        <button id="view-2019-election-btn" class="btn btn-election">2019 Election</button>
-                        <button id="view-2021-election-btn" class="btn btn-election">2021 Election</button>
-                    </div>
-                </div>
-                <div class="poll-view-section">
-                    <h3>Poll-Level Comparison</h3>
-                    <p class="section-description">Compare election results year-over-year at the polling station level</p>
-                    <button id="view-poll-comparison-btn" class="btn btn-poll-view">Poll View by Province</button>
-                </div>
-                <div class="party-analysis-section">
-                    <h3>Party Vote Share Analysis</h3>
-                    <p class="section-description">Analyze individual party performance across polling stations</p>
-                    <button id="view-party-analysis-btn" class="btn btn-party-analysis">Party Analysis</button>
+                    <p class="section-description">View riding results, poll-level data, and party analysis</p>
+                    <button id="view-election-btn" class="btn btn-election">Explore Elections</button>
                 </div>
             </div>
         </div>
 
-        <div id="poll-view-overlay" class="hidden">
-            <div class="welcome-content">
-                <h2>Poll-Level Comparison</h2>
-                <p>Select a province to view polling station results across multiple election years</p>
-                <div class="province-grid" id="poll-province-grid"></div>
-                <button id="back-to-welcome-btn" class="btn btn-back">Back to Main Menu</button>
+        <!-- Province Selection Overlay (for Poll/Party modes) -->
+        <div id="election-province-overlay" class="election-overlay hidden">
+            <div class="overlay-content">
+                <h2>Select a Province</h2>
+                <p id="province-overlay-description">Choose which province to view</p>
+                <div class="province-grid" id="election-province-grid"></div>
+                <button id="cancel-province-selection-btn" class="btn btn-back">Cancel</button>
             </div>
         </div>
 
-        <div id="party-analysis-overlay" class="hidden">
-            <div class="welcome-content">
-                <h2>Party Vote Share Analysis</h2>
-                <p>Select a province to analyze party performance</p>
-                <div class="province-grid" id="party-province-grid"></div>
-                <button id="back-to-welcome-from-party-btn" class="btn btn-back">Back to Main Menu</button>
-            </div>
-        </div>
-
-        <div id="party-selection-overlay" class="hidden">
-            <div class="welcome-content">
-                <h2>Select a Party to Analyze</h2>
-                <p id="party-selection-province-name">Choose which party's vote share to visualize</p>
+        <!-- Party Selection Overlay (for Party mode) -->
+        <div id="election-party-overlay" class="election-overlay hidden">
+            <div class="overlay-content">
+                <h2>Select a Party</h2>
+                <p id="party-overlay-description">Choose which party's vote share to visualize</p>
                 <div class="party-grid">
                     <button class="party-button liberal-btn" data-party="Liberal">
                         <div class="party-color liberal-color"></div>
@@ -162,7 +139,7 @@
                         <div class="party-name">PPC</div>
                     </button>
                 </div>
-                <button id="back-to-party-province-btn" class="btn btn-back">Back to Province Selection</button>
+                <button id="cancel-party-selection-btn" class="btn btn-back">Cancel</button>
             </div>
         </div>
 

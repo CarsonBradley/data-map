@@ -26,7 +26,7 @@
         <div class="header-left">
             <div class="logo">
                 <div class="logo-icon">CA</div>
-                <h1>Demographic Data</h1>
+                <h1>Gangsta Analytics</h1>
             </div>
         </div>
         <div class="header-right">
@@ -35,16 +35,45 @@
                 <span id="province-name"></span>
                 <button id="change-province-btn">Change</button>
             </div>
-            <!-- Unified Election Controls -->
-            <div id="unified-election-controls" class="hidden" style="border: 3px solid red;">
+            <!-- Hierarchical Election Controls -->
+            <div id="unified-election-controls" class="hidden">
+                <!-- Geographic Level Selector -->
                 <div class="election-control-group">
-                    <label class="control-label">View:</label>
+                    <label class="control-label">Geography:</label>
                     <div class="election-toggle-buttons">
-                        <button id="mode-riding-btn" class="election-toggle-btn active">Riding</button>
-                        <button id="mode-poll-btn" class="election-toggle-btn">Poll</button>
-                        <button id="mode-party-btn" class="election-toggle-btn">Party</button>
+                        <button id="geo-national-btn" class="election-toggle-btn active">National</button>
+                        <button id="geo-provincial-btn" class="election-toggle-btn">Provincial</button>
+                        <button id="geo-riding-btn" class="election-toggle-btn">Single Riding</button>
                     </div>
                 </div>
+
+                <!-- Province Selector (shown for Provincial and Single Riding) -->
+                <div class="election-control-group hidden" id="province-context-group">
+                    <label class="control-label">Province:</label>
+                    <select id="election-province-select" class="control-select">
+                        <option value="">Select Province</option>
+                    </select>
+                </div>
+
+                <!-- Riding Selector (shown for Single Riding only) -->
+                <div class="election-control-group hidden" id="riding-context-group">
+                    <label class="control-label">Riding:</label>
+                    <select id="election-riding-select" class="control-select">
+                        <option value="">Select Riding</option>
+                    </select>
+                </div>
+
+                <!-- Unit Display Selector (disabled at National level) -->
+                <div class="election-control-group">
+                    <label class="control-label">Unit Display:</label>
+                    <div class="election-toggle-buttons">
+                        <button id="unit-riding-btn" class="election-toggle-btn active">Riding</button>
+                        <button id="unit-poll-btn" class="election-toggle-btn" disabled>Poll</button>
+                        <button id="unit-advance-btn" class="election-toggle-btn" disabled>Advance</button>
+                    </div>
+                </div>
+
+                <!-- Year Selector -->
                 <div class="election-control-group">
                     <label class="control-label">Year:</label>
                     <div class="election-toggle-buttons">
@@ -53,14 +82,30 @@
                         <button id="year-2025-btn" class="election-toggle-btn">2025</button>
                     </div>
                 </div>
-                <div class="election-control-group hidden" id="province-selector-group">
-                    <label class="control-label">Province:</label>
-                    <button id="select-province-btn" class="control-button">Select Province</button>
-                </div>
-                <div class="election-control-group hidden" id="party-selector-group">
+
+                <!-- Party Filter -->
+                <div class="election-control-group">
                     <label class="control-label">Party:</label>
-                    <button id="select-party-btn" class="control-button">Select Party</button>
+                    <select id="party-filter-select" class="control-select">
+                        <option value="all">All Parties</option>
+                        <option value="Liberal">Liberal</option>
+                        <option value="Conservative">Conservative</option>
+                        <option value="NDP">NDP</option>
+                        <option value="Bloc Québécois">Bloc Québécois</option>
+                        <option value="Green">Green</option>
+                        <option value="PPC">PPC</option>
+                    </select>
                 </div>
+
+                <!-- Party Scale Type (shown when party filter is active) -->
+                <div class="election-control-group hidden" id="party-scale-group">
+                    <label class="control-label">Scale:</label>
+                    <div class="election-toggle-buttons">
+                        <button id="scale-absolute-btn" class="election-toggle-btn active">Absolute</button>
+                        <button id="scale-relative-btn" class="election-toggle-btn">Relative</button>
+                    </div>
+                </div>
+
                 <button id="exit-election-btn" class="control-button-secondary">Exit</button>
             </div>
         </div>
@@ -108,12 +153,15 @@
             </div>
         </div>
 
-        <!-- Party Selection Overlay (for Party mode) -->
+        <!-- Party Filter Selection Overlay -->
         <div id="election-party-overlay" class="election-overlay hidden">
             <div class="overlay-content">
-                <h2>Select a Party</h2>
-                <p id="party-overlay-description">Choose which party's vote share to visualize</p>
+                <h2>Filter by Party</h2>
+                <p>Select a party to visualize vote share, or "All Parties" to see winners</p>
                 <div class="party-grid">
+                    <button class="party-button all-parties-btn" data-party="all">
+                        <div class="party-name">All Parties</div>
+                    </button>
                     <button class="party-button liberal-btn" data-party="Liberal">
                         <div class="party-color liberal-color"></div>
                         <div class="party-name">Liberal</div>

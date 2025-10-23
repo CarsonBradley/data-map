@@ -109,38 +109,36 @@ pollFiles.forEach((fileName, index) => {
                 const lastName = row['Candidate\'s Family Name/Nom de famille du candidat'];
                 const candidateName = [firstName, middleName, lastName].filter(n => n).join(' ');
 
-                const isElected = row['Elected Candidate Indicator/Indicateur du candidat élu'] === 'Y';
+                // NOTE: Do NOT use 'Elected Candidate Indicator' for poll winners!
+                // That field indicates who won the RIDING, not who won THIS POLL.
+                // We'll determine poll winners by vote count after processing all candidates.
 
                 const candidate = {
                     name: candidateName,
                     party: party,
                     votes: votes,
-                    isWinner: isElected
+                    isWinner: false  // Will be set after determining actual poll winner
                 };
 
                 poll.candidates.push(candidate);
                 poll.totalVotes += votes;
-
-                if (isElected) {
-                    poll.winner = {
-                        name: candidateName,
-                        party: party,
-                        votes: votes
-                    };
-                }
             });
 
-            // Calculate percentages and determine winners if not marked
+            // Calculate percentages and determine winners by vote count at each poll
             pollResults.forEach(poll => {
+                // Calculate percentages
                 poll.candidates.forEach(candidate => {
                     candidate.percentage = poll.totalVotes > 0 ?
-                        ((candidate.votes / poll.totalVotes) * 100).toFixed(1) : 0;
+                        ((candidate.votes / poll.totalVotes) * 100).toFixed(1) : '0.0';
                 });
 
-                // If no winner marked, find the one with most votes
-                if (!poll.winner && poll.candidates.length > 0) {
+                // Find the candidate with the most votes at THIS POLL
+                if (poll.candidates.length > 0) {
                     const topCandidate = poll.candidates.reduce((max, c) =>
                         c.votes > max.votes ? c : max, poll.candidates[0]);
+
+                    // Mark the winner
+                    topCandidate.isWinner = true;
                     poll.winner = {
                         name: topCandidate.name,
                         party: topCandidate.party,

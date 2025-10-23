@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('=== SCRIPT.JS LOADED - VERSION 2.0 WITH HIERARCHICAL ELECTION SYSTEM ===');
 
     // --- CONSTANTS ---
     const PROVINCES = {
@@ -147,16 +148,26 @@ document.addEventListener('DOMContentLoaded', () => {
             isLoading: false,
             loadingMessage: '',
             hasLoadedFederalData: false,
-            // Unified Election Mode state
-            showingElections: false,
-            electionMode: 'riding', // 'riding', 'poll', 'party'
-            electionYear: '2021', // '2019', '2021', '2025' (2025 only for poll mode)
-            electionProvinceId: null, // For poll and party modes
-            electionParty: null, // For party mode
-            electionData: null,
-            currentRidingNumber: null, // For drill-down in riding mode
-            currentViewLevel: 'riding', // 'riding', 'poll', 'advance' (for riding mode drill-down)
-            isTogglingElection: false
+
+            // Hierarchical Election Mode state
+            election: {
+                active: false,
+                geographicLevel: 'national',  // 'national' | 'provincial' | 'riding'
+                unitDisplay: 'riding',        // 'riding' | 'poll' | 'advance'
+                year: '2021',                 // '2019' | '2021' | '2025'
+                partyFilter: 'all',           // 'all' | 'Liberal' | 'Conservative' | etc.
+                partyScaleType: 'absolute',   // 'absolute' | 'relative'
+
+                // Context-dependent identifiers
+                provinceId: null,             // PRUID when geographicLevel = 'provincial'
+                provinceAbbr: null,           // Province abbreviation (e.g., 'ON', 'QC')
+                ridingNumber: null,           // FED_NUM when geographicLevel = 'riding'
+                ridingName: null,             // Full riding name
+
+                // Loaded data
+                data: null,
+                isLoading: false
+            }
         },
         _listeners: [],
 
@@ -172,6 +183,33 @@ document.addEventListener('DOMContentLoaded', () => {
             return () => {
                 this._listeners = this._listeners.filter(l => l !== listener);
             };
+        },
+
+        // Helper methods for election state management
+        updateElection(updates) {
+            this.setState({
+                election: { ...this._state.election, ...updates }
+            });
+        },
+
+        getElection() {
+            return { ...this._state.election };
+        },
+
+        resetElection() {
+            this.updateElection({
+                active: false,
+                geographicLevel: 'national',
+                unitDisplay: 'riding',
+                year: '2021',
+                partyFilter: 'all',
+                provinceId: null,
+                provinceAbbr: null,
+                ridingNumber: null,
+                ridingName: null,
+                data: null,
+                isLoading: false
+            });
         }
     };
 
@@ -298,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedPollLayer: null,
         pollViewRidingBoundariesLayer: null,
         partyAnalysisLayer: null,
+        selectedLayer: null, // Track currently selected/highlighted layer
 
         initialize() {
             this.map = L.map('map', { 
@@ -363,6 +402,35 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.pollViewRidingBoundariesLayer) {
                 this.map.removeLayer(this.pollViewRidingBoundariesLayer);
                 this.pollViewRidingBoundariesLayer = null;
+            }
+            this.clearHighlight();
+        },
+
+        highlightLayer(layer) {
+            // Clear previous highlight
+            this.clearHighlight();
+
+            // Store reference and apply highlight style
+            this.selectedLayer = layer;
+            layer.setStyle({
+                color: '#FFD700', // Bright yellow/gold
+                weight: 4,
+                opacity: 1
+            });
+
+            // Bring to front so border is visible
+            layer.bringToFront();
+        },
+
+        clearHighlight() {
+            if (this.selectedLayer) {
+                // Reset to default style - will be overridden by the layer's original style
+                this.selectedLayer.setStyle({
+                    color: '#333333',
+                    weight: 1.5,
+                    opacity: 0.8
+                });
+                this.selectedLayer = null;
             }
         },
 
@@ -634,7 +702,22 @@ document.addEventListener('DOMContentLoaded', () => {
             this.electionLayer = L.geoJSON(electionData, {
                 pane: 'electionPane',
                 style: feature => {
-                    const results = feature.properties.electionResults;
+                    // Check for electionResults (riding data), pollResults (poll data), or advResults (advance poll data)
+                    const results = feature.properties.electionResults || feature.properties.pollResults || feature.properties.advResults;
+
+                    // If it's poll or advance poll data, use the margin-based color intensity
+                    if (feature.properties.pollResults || feature.properties.advResults) {
+                        const colorInfo = this.getPollColorInfo(results);
+                        return {
+                            fillColor: colorInfo.color || '#9CA3AF',
+                            weight: 0.5,
+                            color: '#999999',
+                            opacity: 0.4,
+                            fillOpacity: 0.85
+                        };
+                    }
+
+                    // For riding data, use flat party color
                     const party = results?.winner?.party;
                     return {
                         fillColor: this.getPartyColor(party),
@@ -646,10 +729,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 onEachFeature: (feature, layer) => {
                     layer.on('click', () => {
-                        const results = feature.properties.electionResults;
                         const props = feature.properties;
 
-                        // When clicking a riding, save it as the current riding so poll toggle becomes available
+                        // Highlight the clicked layer with bright yellow border
+                        MapService.highlightLayer(layer);
+
+                        // Debug: Check what we're actually clicking
+                        console.log('Clicked feature properties:', {
+                            hasElectionResults: !!props.electionResults,
+                            hasPollResults: !!props.pollResults,
+                            hasAdvResults: !!props.advResults,
+                            FED_NUM: props.FED_NUM,
+                            PD_NUM: props.PD_NUM,
+                            ADV_POLL_N: props.ADV_POLL_N,
+                            ED_NAMEE: props.ED_NAMEE
+                        });
+
+                        // Check for electionResults (riding data), pollResults (poll data), or advResults (advance poll data)
+                        const results = feature.properties.electionResults || feature.properties.pollResults || feature.properties.advResults;
+
+                        console.log('Results object:', results);
+                        console.log('Results winner:', results?.winner);
+                        console.log('Results candidates:', results?.candidates?.slice(0, 3));
+
+                        // Check if we're in hierarchical mode
+                        const election = StateService.getElection();
+                        if (election.active && election.geographicLevel === 'riding' && !election.ridingNumber) {
+                            // User is trying to select a riding for single riding view
+                            App.selectElectionRiding(props.FED_NUM, props.ED_NAMEE);
+                            return;
+                        }
+
+                        // When clicking a riding, save it as the current riding so poll toggle becomes available (old mode)
                         StateService.setState({ currentRidingNumber: props.FED_NUM });
 
                         // Build content for side panel
@@ -657,31 +768,108 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         if (results && results.winner) {
                             const winner = results.winner;
-                            content += `
-                                <div class="info-election-winner">
-                                    <div class="info-party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
-                                    <div class="info-winner-info">
-                                        <div class="info-winner-name">${winner.name}</div>
-                                        <div class="info-winner-party">${winner.party}</div>
+                            const isPollData = feature.properties.pollResults !== undefined || feature.properties.advResults !== undefined;
+
+                            // For riding data (not polls or advance polls), show the riding winner info
+                            if (!isPollData) {
+                                // Calculate margin and percentage for riding data
+                                let winnerPercentage = winner.percentage;
+                                let margin = winner.margin;
+                                let marginPercent = winner.marginPercent;
+
+                                content += `
+                                    <div class="info-section-header">Riding Winner</div>
+                                    <div class="info-election-winner">
+                                        <div class="info-party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
+                                        <div class="info-winner-info">
+                                            <div class="info-winner-name">${winner.name || winner.party}</div>
+                                            <div class="info-winner-party">${winner.party}</div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="info-election-stats">
-                                    <div class="info-stat">
-                                        <div class="info-stat-label">Votes</div>
-                                        <div class="info-stat-value">${winner.votes.toLocaleString()} (${winner.percentage}%)</div>
-                                    </div>
-                                    <div class="info-stat">
-                                        <div class="info-stat-label">Margin</div>
-                                        <div class="info-stat-value">${winner.margin.toLocaleString()} (${winner.marginPercent}%)</div>
-                                    </div>
-                                    <div class="info-stat">
-                                        <div class="info-stat-label">Total Votes</div>
-                                        <div class="info-stat-value">${results.totalVotes.toLocaleString()}</div>
-                                    </div>
-                                </div>`;
+                                    <div class="info-election-stats">
+                                        <div class="info-stat">
+                                            <div class="info-stat-label">Votes</div>
+                                            <div class="info-stat-value">${parseInt(winner.votes).toLocaleString()} (${winnerPercentage}%)</div>
+                                        </div>
+                                        <div class="info-stat">
+                                            <div class="info-stat-label">Margin</div>
+                                            <div class="info-stat-value">${parseInt(margin).toLocaleString()} (${marginPercent}%)</div>
+                                        </div>
+                                        <div class="info-stat">
+                                            <div class="info-stat-label">Total Votes</div>
+                                            <div class="info-stat-value">${results.totalVotes.toLocaleString()}</div>
+                                        </div>
+                                    </div>`;
+                            }
+                            // For poll data, skip the poll winner section entirely
+                            // (it will be shown in the "Overall Riding Winner" section and candidates list)
+
+                            // For poll/advance poll data, try to fetch and display the riding winner
+                            const fedNum = props.FED_NUM || props.FEDNUM;
+                            if (isPollData && fedNum) {
+                                const election = StateService.getElection();
+
+                                // Fetch riding winner asynchronously
+                                (async () => {
+                                    try {
+                                        const ridingDataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/${election.year}_riding_with_results_min.json`;
+                                        const ridingData = await DataService.fetchGeoJSON(ridingDataUrl);
+
+                                        // Find this specific riding
+                                        const ridingFeature = ridingData.features.find(f =>
+                                            (f.properties.FED_NUM || f.properties.FEDNUM) == fedNum
+                                        );
+
+                                        if (ridingFeature && ridingFeature.properties.electionResults) {
+                                            const ridingResults = ridingFeature.properties.electionResults;
+                                            const ridingWinner = ridingResults.winner;
+
+                                            if (ridingWinner) {
+                                                // Build riding winner section
+                                                let ridingContent = `
+                                                    <div class="info-section-divider"></div>
+                                                    <div class="info-section-header">Overall Riding Winner</div>
+                                                    <div class="info-election-winner" style="opacity: 0.8;">
+                                                        <div class="info-party-badge" style="background-color: ${this.getPartyColor(ridingWinner.party)}"></div>
+                                                        <div class="info-winner-info">
+                                                            <div class="info-winner-name">${ridingWinner.name || ridingWinner.party}</div>
+                                                            <div class="info-winner-party">${ridingWinner.party}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="info-election-stats" style="opacity: 0.8;">
+                                                        <div class="info-stat">
+                                                            <div class="info-stat-label">Votes</div>
+                                                            <div class="info-stat-value">${parseInt(ridingWinner.votes).toLocaleString()} (${ridingWinner.percentage}%)</div>
+                                                        </div>
+                                                        <div class="info-stat">
+                                                            <div class="info-stat-label">Margin</div>
+                                                            <div class="info-stat-value">${parseInt(ridingWinner.margin).toLocaleString()} (${ridingWinner.marginPercent}%)</div>
+                                                        </div>
+                                                        <div class="info-stat">
+                                                            <div class="info-stat-label">Total Votes</div>
+                                                            <div class="info-stat-value">${ridingResults.totalVotes.toLocaleString()}</div>
+                                                        </div>
+                                                    </div>`;
+
+                                                // Insert into the info panel after the candidates section
+                                                const infoPanelData = document.getElementById('info-panel-data');
+                                                if (infoPanelData) {
+                                                    const candidatesSection = infoPanelData.querySelector('.info-all-candidates');
+                                                    if (candidatesSection) {
+                                                        candidatesSection.insertAdjacentHTML('afterend', ridingContent);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (error) {
+                                        console.warn('Could not load riding winner:', error);
+                                    }
+                                })();
+                            }
 
                             if (results.candidates && results.candidates.length > 1) {
-                                content += `<div class="info-all-candidates"><strong>All Candidates</strong>`;
+                                const pollType = feature.properties.advResults ? 'Advance Poll' : (feature.properties.pollResults ? 'Poll' : 'Riding');
+                                content += `<div class="info-all-candidates"><strong>All Candidates at This ${pollType}</strong>`;
                                 // Sort candidates by percentage in descending order
                                 const sortedCandidates = [...results.candidates].sort((a, b) =>
                                     parseFloat(b.percentage) - parseFloat(a.percentage)
@@ -701,8 +889,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
 
                         // Update side panel with chart
+                        // Build appropriate title based on data type
+                        let title;
+                        if (feature.properties.pollResults) {
+                            // Poll data
+                            const pollNum = props.PD_NUM || props.PDNUM || props.pollNumber;
+                            const pollName = results.pollName || props.pollName || '';
+                            title = pollName ? `Poll ${pollNum} - ${pollName}` : `Poll ${pollNum}`;
+                        } else if (feature.properties.advResults) {
+                            // Advance poll data
+                            const advPollNum = props.ADV_POLL_N || props.ADVPDNUM;
+                            const pollName = results.pollName || props.pollName || '';
+                            title = pollName ? `Advance Poll ${advPollNum} - ${pollName}` : `Advance Poll ${advPollNum}`;
+                        } else {
+                            // Riding data
+                            title = `${props.ED_NAMEE} (Riding ${props.FED_NUM})`;
+                        }
+
                         UIManager.updateElectionInfo(
-                            `${props.ED_NAMEE} (Riding ${props.FED_NUM})`,
+                            title,
                             content,
                             results?.candidates || null
                         );
@@ -727,6 +932,148 @@ document.addEventListener('DOMContentLoaded', () => {
             if (this.electionLayer) {
                 this.map.removeLayer(this.electionLayer);
                 this.electionLayer = null;
+            }
+        },
+
+        // Display election results with party filter (shows vote share for selected party)
+        displayElectionResultsWithPartyFilter(electionData, party, preserveView = false) {
+            if (this.electionLayer) {
+                this.map.removeLayer(this.electionLayer);
+                this.electionLayer = null;
+            }
+
+            // Get scale type from state
+            const election = StateService.getElection();
+            const useRelativeScale = election.partyScaleType === 'relative';
+
+            // Calculate min/max for relative scale
+            let minPercentage = Infinity;
+            let maxPercentage = -Infinity;
+
+            if (useRelativeScale) {
+                electionData.features.forEach(feature => {
+                    const results = feature.properties.electionResults || feature.properties.pollResults || feature.properties.advResults;
+                    if (results && results.candidates) {
+                        const partyCandidate = results.candidates.find(c => c.party === party);
+                        if (partyCandidate) {
+                            const percentage = parseFloat(partyCandidate.percentage) || 0;
+                            if (percentage > 0) { // Only consider areas where party ran
+                                minPercentage = Math.min(minPercentage, percentage);
+                                maxPercentage = Math.max(maxPercentage, percentage);
+                            }
+                        }
+                    }
+                });
+
+                // Handle edge cases
+                if (minPercentage === Infinity) minPercentage = 0;
+                if (maxPercentage === -Infinity) maxPercentage = 100;
+                if (minPercentage === maxPercentage) maxPercentage = minPercentage + 1; // Avoid division by zero
+            }
+
+            this.electionLayer = L.geoJSON(electionData, {
+                pane: 'electionPane',
+                style: feature => {
+                    const results = feature.properties.electionResults || feature.properties.pollResults || feature.properties.advResults;
+
+                    // Find this party's vote share
+                    let partyPercentage = 0;
+                    if (results && results.candidates) {
+                        const partyCandidate = results.candidates.find(c => c.party === party);
+                        if (partyCandidate) {
+                            partyPercentage = parseFloat(partyCandidate.percentage) || 0;
+                        }
+                    }
+
+                    // Calculate intensity based on scale type
+                    let intensity;
+                    if (useRelativeScale) {
+                        // Relative scale: normalize between min and max in this geography
+                        if (partyPercentage === 0) {
+                            intensity = 0; // Party didn't run here
+                        } else {
+                            intensity = (partyPercentage - minPercentage) / (maxPercentage - minPercentage);
+                        }
+                    } else {
+                        // Absolute scale: 0-100%
+                        intensity = partyPercentage / 100;
+                    }
+
+                    const baseColor = this.getPartyColor(party);
+
+                    return {
+                        fillColor: baseColor,
+                        weight: 1,
+                        color: '#333333',
+                        opacity: 0.6,
+                        fillOpacity: Math.max(0.1, intensity * 0.9) // Min 0.1, max 0.9
+                    };
+                },
+                onEachFeature: (feature, layer) => {
+                    layer.on('click', () => {
+                        const results = feature.properties.electionResults || feature.properties.pollResults || feature.properties.advResults;
+                        const props = feature.properties;
+
+                        // Highlight the clicked layer with bright yellow border
+                        MapService.highlightLayer(layer);
+
+                        // Find this party's data
+                        let partyCandidate = null;
+                        if (results && results.candidates) {
+                            partyCandidate = results.candidates.find(c => c.party === party);
+                        }
+
+                        let content = '';
+                        if (partyCandidate) {
+                            content += `
+                                <div class="info-election-winner">
+                                    <div class="info-party-badge" style="background-color: ${this.getPartyColor(party)}"></div>
+                                    <div class="info-winner-info">
+                                        <div class="info-winner-name">${partyCandidate.name || party}</div>
+                                        <div class="info-winner-party">${party}</div>
+                                    </div>
+                                </div>
+                                <div class="info-election-stats">
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Votes</div>
+                                        <div class="info-stat-value">${parseInt(partyCandidate.votes).toLocaleString()} (${partyCandidate.percentage}%)</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Total Votes</div>
+                                        <div class="info-stat-value">${results.totalVotes?.toLocaleString() || 'N/A'}</div>
+                                    </div>
+                                </div>`;
+                        } else {
+                            content += `<div class="info-panel-hint">${party} did not run a candidate here</div>`;
+                        }
+
+                        let title;
+                        if (props.ED_NAMEE || props.FEDENAME) {
+                            const ridingName = props.ED_NAMEE || props.FEDENAME;
+                            const fedNum = props.FED_NUM || props.FEDNUM;
+                            title = `${ridingName} (Riding ${fedNum})`;
+                        } else if (props.ADV_POLL_N || props.ADVPDNUM) {
+                            const advPollNum = props.ADV_POLL_N || props.ADVPDNUM;
+                            title = `Advance Poll ${advPollNum}`;
+                        } else {
+                            const pollNum = props.PD_NUM || props.PDNUM;
+                            title = `Poll ${pollNum}`;
+                        }
+
+                        UIManager.updateElectionInfo(title, content, null);
+                    });
+                }
+            }).addTo(this.map);
+
+            if (!preserveView) {
+                try {
+                    const bounds = this.electionLayer.getBounds();
+                    if (bounds.isValid()) {
+                        this.map.fitBounds(bounds);
+                    }
+                } catch (e) {
+                    console.warn('Could not fit bounds:', e);
+                }
             }
         },
 
@@ -1295,20 +1642,32 @@ document.addEventListener('DOMContentLoaded', () => {
             backToWelcomeFromPartyBtn: document.getElementById('back-to-welcome-from-party-btn'),
             backToPartyProvinceBtn: document.getElementById('back-to-party-province-btn'),
             partySelectionProvinceName: document.getElementById('party-selection-province-name'),
-            // Unified Election Controls
+            // Hierarchical Election Controls
             unifiedElectionControls: document.getElementById('unified-election-controls'),
-            modeRidingBtn: document.getElementById('mode-riding-btn'),
-            modePollBtn: document.getElementById('mode-poll-btn'),
-            modePartyBtn: document.getElementById('mode-party-btn'),
+            // Geographic level buttons
+            geoNationalBtn: document.getElementById('geo-national-btn'),
+            geoProvincialBtn: document.getElementById('geo-provincial-btn'),
+            geoRidingBtn: document.getElementById('geo-riding-btn'),
+            // Context groups
+            provinceContextGroup: document.getElementById('province-context-group'),
+            electionProvinceSelect: document.getElementById('election-province-select'),
+            ridingContextGroup: document.getElementById('riding-context-group'),
+            electionRidingSelect: document.getElementById('election-riding-select'),
+            // Unit display buttons
+            unitRidingBtn: document.getElementById('unit-riding-btn'),
+            unitPollBtn: document.getElementById('unit-poll-btn'),
+            unitAdvanceBtn: document.getElementById('unit-advance-btn'),
+            // Year buttons
             year2019Btn: document.getElementById('year-2019-btn'),
             year2021Btn: document.getElementById('year-2021-btn'),
             year2025Btn: document.getElementById('year-2025-btn'),
-            provinceSelectorGroup: document.getElementById('province-selector-group'),
-            partySelectorGroup: document.getElementById('party-selector-group'),
-            selectProvinceBtn: document.getElementById('select-province-btn'),
-            selectPartyBtn: document.getElementById('select-party-btn'),
+            // Party filter
+            partyFilterSelect: document.getElementById('party-filter-select'),
+            partyScaleGroup: document.getElementById('party-scale-group'),
+            scaleAbsoluteBtn: document.getElementById('scale-absolute-btn'),
+            scaleRelativeBtn: document.getElementById('scale-relative-btn'),
             exitElectionBtn: document.getElementById('exit-election-btn'),
-            // Unified Overlays
+            // Overlays
             electionProvinceOverlay: document.getElementById('election-province-overlay'),
             electionProvinceGrid: document.getElementById('election-province-grid'),
             cancelProvinceSelectionBtn: document.getElementById('cancel-province-selection-btn'),
@@ -1318,58 +1677,96 @@ document.addEventListener('DOMContentLoaded', () => {
 
         initialize() {
             this.renderProvinceSelector();
+            this.populateElectionProvinceDropdown();
             this.elements.panelCloseBtn.addEventListener('click', () => this.setPanelOpen(false));
             this.elements.openControlsBtn.addEventListener('click', () => this.setPanelOpen(true));
             this.elements.changeProvinceBtn.addEventListener('click', () => App.returnToWelcome());
 
-            // Add UNIFIED election button listeners
+            // Hierarchical Election Controls - Entry Point
             const viewElectionBtn = document.getElementById('view-election-btn');
-            console.log("View election button found:", viewElectionBtn);
             if (viewElectionBtn) {
-                viewElectionBtn.addEventListener('click', () => {
-                    console.log("Explore Elections button clicked!");
-                    App.enterElectionMode();
+                viewElectionBtn.addEventListener('click', () => App.startElectionMode());
+            }
+
+            // Province dropdown change handler
+            if (this.elements.electionProvinceSelect) {
+                this.elements.electionProvinceSelect.addEventListener('change', async (e) => {
+                    const value = e.target.value;
+                    if (value) {
+                        const [provinceId, provinceAbbr] = value.split('|');
+                        await App.selectElectionProvince(provinceId, provinceAbbr);
+                    }
                 });
-            } else {
-                console.error("View election button NOT found in DOM!");
             }
 
-            // Unified Mode Buttons
-            if (this.elements.modeRidingBtn) {
-                this.elements.modeRidingBtn.addEventListener('click', () => App.switchElectionMode('riding'));
-            }
-            if (this.elements.modePollBtn) {
-                this.elements.modePollBtn.addEventListener('click', () => App.switchElectionMode('poll'));
-            }
-            if (this.elements.modePartyBtn) {
-                this.elements.modePartyBtn.addEventListener('click', () => App.switchElectionMode('party'));
+            // Riding dropdown change handler
+            if (this.elements.electionRidingSelect) {
+                this.elements.electionRidingSelect.addEventListener('change', async (e) => {
+                    const value = e.target.value;
+                    if (value) {
+                        const [ridingNumber, ridingName] = value.split('|');
+                        await App.selectElectionRiding(parseInt(ridingNumber), ridingName);
+                    }
+                });
             }
 
-            // Unified Year Buttons
+            // Geographic Level Buttons
+            if (this.elements.geoNationalBtn) {
+                this.elements.geoNationalBtn.addEventListener('click', () => App.switchGeographicLevel('national'));
+            }
+            if (this.elements.geoProvincialBtn) {
+                this.elements.geoProvincialBtn.addEventListener('click', () => App.switchGeographicLevel('provincial'));
+            }
+            if (this.elements.geoRidingBtn) {
+                this.elements.geoRidingBtn.addEventListener('click', () => App.switchGeographicLevel('riding'));
+            }
+
+            // Unit Display Buttons
+            if (this.elements.unitRidingBtn) {
+                this.elements.unitRidingBtn.addEventListener('click', () => App.switchUnitDisplay('riding'));
+            }
+            if (this.elements.unitPollBtn) {
+                this.elements.unitPollBtn.addEventListener('click', () => App.switchUnitDisplay('poll'));
+            }
+            if (this.elements.unitAdvanceBtn) {
+                this.elements.unitAdvanceBtn.addEventListener('click', () => App.switchUnitDisplay('advance'));
+            }
+
+            // Year Buttons
             if (this.elements.year2019Btn) {
-                this.elements.year2019Btn.addEventListener('click', () => App.switchElectionYear('2019'));
+                this.elements.year2019Btn.addEventListener('click', () => App.switchYear('2019'));
             }
             if (this.elements.year2021Btn) {
-                this.elements.year2021Btn.addEventListener('click', () => App.switchElectionYear('2021'));
+                this.elements.year2021Btn.addEventListener('click', () => App.switchYear('2021'));
             }
             if (this.elements.year2025Btn) {
-                this.elements.year2025Btn.addEventListener('click', () => App.switchElectionYear('2025'));
+                this.elements.year2025Btn.addEventListener('click', () => App.switchYear('2025'));
             }
 
-            // Province/Party Selector Buttons
-            if (this.elements.selectProvinceBtn) {
-                this.elements.selectProvinceBtn.addEventListener('click', () => {
-                    const state = StateService.getState();
-                    UIManager.showProvinceSelector(state.electionMode);
+            // Province Selection Button
+            if (this.elements.electionProvinceBtn) {
+                this.elements.electionProvinceBtn.addEventListener('click', () => UIManager.showElectionProvinceSelector());
+            }
+
+            // Party Filter Dropdown
+            if (this.elements.partyFilterSelect) {
+                this.elements.partyFilterSelect.addEventListener('change', async (e) => {
+                    const party = e.target.value;
+                    await App.selectPartyFilter(party);
                 });
             }
-            if (this.elements.selectPartyBtn) {
-                this.elements.selectPartyBtn.addEventListener('click', () => UIManager.showPartySelector());
+
+            // Party Scale Type Buttons
+            if (this.elements.scaleAbsoluteBtn) {
+                this.elements.scaleAbsoluteBtn.addEventListener('click', () => App.switchPartyScaleType('absolute'));
+            }
+            if (this.elements.scaleRelativeBtn) {
+                this.elements.scaleRelativeBtn.addEventListener('click', () => App.switchPartyScaleType('relative'));
             }
 
             // Exit Election Button
             if (this.elements.exitElectionBtn) {
-                this.elements.exitElectionBtn.addEventListener('click', () => App.returnToWelcome());
+                this.elements.exitElectionBtn.addEventListener('click', () => App.exitElectionMode());
             }
 
             // Cancel Overlay Buttons
@@ -1605,12 +2002,6 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         handleStateChange(state) {
-            console.log("=== handleStateChange called ===");
-            console.log("State:", state);
-            console.log("showingElections:", state.showingElections);
-            console.log("electionMode:", state.electionMode);
-            console.log("electionYear:", state.electionYear);
-
             // Update Panel
             if (state.isPanelOpen !== this.elements.controlPanel.classList.contains('open')) {
                 this.elements.controlPanel.classList.toggle('open', state.isPanelOpen);
@@ -1844,6 +2235,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.elements.unifiedElectionControls.classList.add('hidden');
             }
 
+            // Update hierarchical election controls
+            this.updateElectionControls();
+
             // Update Legend
             this.renderLegend(state.currentVisualization);
         },
@@ -1855,6 +2249,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.innerHTML = `<div class="abbr">${abbr}</div><div class="name">${name}</div>`;
                 button.addEventListener('click', () => App.selectProvince(code));
                 this.elements.provinceGrid.appendChild(button);
+            });
+        },
+
+        populateElectionProvinceDropdown() {
+            if (!this.elements.electionProvinceSelect) return;
+
+            // Clear existing options except the first one
+            this.elements.electionProvinceSelect.innerHTML = '<option value="">Select Province</option>';
+
+            // Add province options
+            Object.entries(PROVINCES).forEach(([code, { name, abbr }]) => {
+                const option = document.createElement('option');
+                option.value = `${code}|${abbr}`;
+                option.textContent = name;
+                this.elements.electionProvinceSelect.appendChild(option);
             });
         },
 
@@ -1893,6 +2302,183 @@ document.addEventListener('DOMContentLoaded', () => {
             const description = document.getElementById('party-overlay-description');
             if (description) {
                 description.textContent = `Analyzing polls in ${provinceName}`;
+            }
+        },
+
+        // NEW HIERARCHICAL ELECTION SELECTORS
+        showElectionProvinceSelector() {
+            console.log('showElectionProvinceSelector called');
+            console.log('electionProvinceGrid element:', this.elements.electionProvinceGrid);
+
+            // Clear and populate the province grid
+            this.elements.electionProvinceGrid.innerHTML = '';
+
+            Object.entries(PROVINCES).forEach(([code, { name, abbr }]) => {
+                const button = document.createElement('button');
+                button.className = 'province-button';
+                button.innerHTML = `<div class="abbr">${abbr}</div><div class="name">${name}</div>`;
+                button.addEventListener('click', async () => {
+                    console.log('Province button clicked:', code, abbr);
+                    try {
+                        console.log('About to call App.selectElectionProvince, App is:', typeof App);
+                        await App.selectElectionProvince(code, abbr);
+                        console.log('App.selectElectionProvince call completed');
+                        this.elements.electionProvinceOverlay.classList.add('hidden');
+                    } catch (error) {
+                        console.error('Error in province button click handler:', error);
+                    }
+                });
+                this.elements.electionProvinceGrid.appendChild(button);
+            });
+
+            console.log('Province buttons created:', this.elements.electionProvinceGrid.children.length);
+
+            // Update description
+            const election = StateService.getElection();
+            const description = document.getElementById('province-overlay-description');
+            if (description) {
+                if (election.geographicLevel === 'provincial') {
+                    description.textContent = 'Select a province to view election data';
+                } else if (election.geographicLevel === 'riding') {
+                    description.textContent = 'Select a province first, then click a riding on the map';
+                }
+            }
+
+            // Show the overlay
+            this.elements.electionProvinceOverlay.classList.remove('hidden');
+        },
+
+        showElectionPartySelector() {
+            // Show the party selection overlay
+            this.elements.electionPartyOverlay.classList.remove('hidden');
+
+            // Wire up party buttons
+            const partyButtons = this.elements.electionPartyOverlay.querySelectorAll('.party-button');
+            partyButtons.forEach(button => {
+                const party = button.getAttribute('data-party');
+                button.onclick = () => {
+                    App.selectPartyFilter(party);
+                    this.elements.electionPartyOverlay.classList.add('hidden');
+                };
+            });
+        },
+
+        // Update election controls UI based on current state
+        updateElectionControls() {
+            const election = StateService.getElection();
+
+            if (!election.active) {
+                this.elements.unifiedElectionControls?.classList.add('hidden');
+                return;
+            }
+
+            // Show controls
+            this.elements.unifiedElectionControls?.classList.remove('hidden');
+
+            // Update geographic level buttons
+            this.elements.geoNationalBtn?.classList.toggle('active', election.geographicLevel === 'national');
+            this.elements.geoProvincialBtn?.classList.toggle('active', election.geographicLevel === 'provincial');
+            this.elements.geoRidingBtn?.classList.toggle('active', election.geographicLevel === 'riding');
+
+            // Show/hide and update province context
+            const needsProvince = election.geographicLevel === 'provincial' || election.geographicLevel === 'riding';
+            this.elements.provinceContextGroup?.classList.toggle('hidden', !needsProvince);
+
+            if (needsProvince && this.elements.electionProvinceSelect) {
+                if (election.provinceId) {
+                    // Set the dropdown to the selected province
+                    const value = `${election.provinceId}|${election.provinceAbbr}`;
+                    this.elements.electionProvinceSelect.value = value;
+                } else {
+                    // Reset to default
+                    this.elements.electionProvinceSelect.value = '';
+                }
+            }
+
+            // Show/hide riding context
+            const needsRiding = election.geographicLevel === 'riding';
+            this.elements.ridingContextGroup?.classList.toggle('hidden', !needsRiding);
+
+            if (needsRiding && this.elements.electionRidingSelect) {
+                // Populate riding dropdown if province is selected
+                if (election.provinceId && !election.ridingNumber) {
+                    this.populateRidingDropdown(election.provinceId, election.year);
+                }
+
+                // Set the dropdown to the selected riding
+                if (election.ridingNumber) {
+                    const value = `${election.ridingNumber}|${election.ridingName}`;
+                    this.elements.electionRidingSelect.value = value;
+                } else {
+                    this.elements.electionRidingSelect.value = '';
+                }
+            }
+
+            // Update unit display buttons
+            this.elements.unitRidingBtn?.classList.toggle('active', election.unitDisplay === 'riding');
+            this.elements.unitPollBtn?.classList.toggle('active', election.unitDisplay === 'poll');
+            this.elements.unitAdvanceBtn?.classList.toggle('active', election.unitDisplay === 'advance');
+
+            // Enable/disable unit display buttons based on geographic level
+            const canShowPolls = election.geographicLevel !== 'national';
+            this.elements.unitPollBtn?.toggleAttribute('disabled', !canShowPolls);
+            this.elements.unitAdvanceBtn?.toggleAttribute('disabled', !canShowPolls);
+
+            // Update year buttons
+            this.elements.year2019Btn?.classList.toggle('active', election.year === '2019');
+            this.elements.year2021Btn?.classList.toggle('active', election.year === '2021');
+            this.elements.year2025Btn?.classList.toggle('active', election.year === '2025');
+
+            // Update party filter dropdown
+            if (this.elements.partyFilterSelect) {
+                this.elements.partyFilterSelect.value = election.partyFilter;
+            }
+
+            // Show/hide party scale toggle based on whether a party is selected
+            const showScaleToggle = election.partyFilter !== 'all';
+            this.elements.partyScaleGroup?.classList.toggle('hidden', !showScaleToggle);
+
+            // Update party scale buttons
+            if (showScaleToggle) {
+                this.elements.scaleAbsoluteBtn?.classList.toggle('active', election.partyScaleType === 'absolute');
+                this.elements.scaleRelativeBtn?.classList.toggle('active', election.partyScaleType === 'relative');
+            }
+        },
+
+        async populateRidingDropdown(provinceId, year) {
+            if (!this.elements.electionRidingSelect) return;
+
+            // Clear existing options except the first one
+            this.elements.electionRidingSelect.innerHTML = '<option value="">Select Riding</option>';
+
+            try {
+                // Load riding data for the selected year
+                const ridingDataUrl = `election_boundaries_19-25/${year}_boundaries/geojson/${year}_riding_with_results_min.json`;
+                const ridingData = await DataService.fetchGeoJSON(ridingDataUrl);
+
+                // Filter ridings by province and create options
+                const ridings = ridingData.features
+                    .filter(f => {
+                        const fedNum = f.properties.FED_NUM || f.properties.FEDNUM;
+                        const ridingProvinceId = Math.floor(fedNum / 1000);
+                        return ridingProvinceId === parseInt(provinceId);
+                    })
+                    .sort((a, b) => {
+                        const nameA = a.properties.ED_NAMEE || a.properties.FEDENAME || '';
+                        const nameB = b.properties.ED_NAMEE || b.properties.FEDENAME || '';
+                        return nameA.localeCompare(nameB);
+                    });
+
+                ridings.forEach(feature => {
+                    const fedNum = feature.properties.FED_NUM || feature.properties.FEDNUM;
+                    const ridingName = feature.properties.ED_NAMEE || feature.properties.FEDENAME || `Riding ${fedNum}`;
+                    const option = document.createElement('option');
+                    option.value = `${fedNum}|${ridingName}`;
+                    option.textContent = `${ridingName} (${fedNum})`;
+                    this.elements.electionRidingSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to populate riding dropdown:', error);
             }
         },
 
@@ -2180,40 +2766,310 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        // === UNIFIED ELECTION MODE ===
-        // Entry point for election mode - loads riding view by default
-        async enterElectionMode() {
-            console.log("Entering election mode...");
+        // === HIERARCHICAL ELECTION MODE ===
+
+        // Entry point: Start election mode at national level
+        async startElectionMode() {
             try {
                 UIManager.showWelcome(false);
-                StateService.setState({
-                    isLoading: true,
-                    loadingMessage: 'Loading election results...',
-                    showingElections: true,
-                    electionMode: 'riding',
-                    electionYear: '2021'
+                StateService.updateElection({
+                    active: true,
+                    geographicLevel: 'national',
+                    unitDisplay: 'riding',
+                    year: '2021',
+                    partyFilter: 'all'
                 });
 
-                console.log("Loading election data...");
-                // Load 2021 riding data by default
-                const electionData = await DataService.fetchGeoJSON('election_boundaries_19-25/2021_boundaries/geojson/2021_riding_with_results_min.json');
-
-                console.log("Election data loaded, updating state...");
-                StateService.setState({
-                    electionData,
-                    isLoading: false
-                });
-
-                console.log("Displaying election results on map...");
-                MapService.displayElectionResults(electionData, false);
-                console.log("Election mode entered successfully!");
+                // Initial load - fit bounds to show all of Canada
+                await this.loadElectionData(true);
 
             } catch (error) {
-                console.error("Failed to enter election mode:", error);
-                StateService.setState({ isLoading: false, showingElections: false });
+                console.error("Failed to start election mode:", error);
+                StateService.resetElection();
                 UIManager.showWelcome(true);
-                alert('Failed to load election results. Please check the console for details.');
+                alert('Failed to load election results. Please try again.');
             }
+        },
+
+        // Exit election mode and return to welcome screen
+        exitElectionMode() {
+            MapService.clearLayers();
+            StateService.resetElection();
+            UIManager.showWelcome(true);
+            UIManager.hideElectionInfo();
+        },
+
+        // Switch geographic level
+        async switchGeographicLevel(level) {
+            const election = StateService.getElection();
+
+            if (level === election.geographicLevel) return; // Already at this level
+
+            if (level === 'national') {
+                // Go to national view - reset province and riding context
+                StateService.updateElection({
+                    geographicLevel: 'national',
+                    unitDisplay: 'riding', // Force riding display at national
+                    provinceId: null,
+                    provinceAbbr: null,
+                    ridingNumber: null,
+                    ridingName: null
+                });
+                await this.loadElectionData();
+
+            } else if (level === 'provincial') {
+                // Need to select a province
+                if (election.provinceId) {
+                    // Already have a province selected
+                    StateService.updateElection({
+                        geographicLevel: 'provincial',
+                        ridingNumber: null,
+                        ridingName: null
+                    });
+                    await this.loadElectionData();
+                } else {
+                    // Just set geographic level - user will select from dropdown
+                    StateService.updateElection({ geographicLevel: 'provincial' });
+                }
+
+            } else if (level === 'riding') {
+                // Need to select a province first, then a riding
+                if (!election.provinceId) {
+                    // Just set geographic level - user needs to select province first
+                    StateService.updateElection({ geographicLevel: 'riding' });
+                } else if (election.ridingNumber) {
+                    // Already have a riding selected, load its data
+                    StateService.updateElection({ geographicLevel: 'riding' });
+                    await this.loadElectionData();
+                } else {
+                    // Province selected but no riding - user will select from dropdown
+                    StateService.updateElection({ geographicLevel: 'riding' });
+                    // The dropdown will be populated by updateElectionControls
+                }
+            }
+        },
+
+        // Select a province for provincial or riding level
+        async selectElectionProvince(provinceId, provinceAbbr) {
+            const election = StateService.getElection();
+
+            StateService.updateElection({
+                provinceId,
+                provinceAbbr,
+                // Clear riding selection when province changes
+                ridingNumber: null,
+                ridingName: null
+            });
+
+            // If at riding level, repopulate the riding dropdown
+            if (election.geographicLevel === 'riding') {
+                await UIManager.populateRidingDropdown(provinceId, election.year);
+            } else {
+                // For provincial level, load the data and fit bounds to new province
+                await this.loadElectionData(true);
+            }
+        },
+
+        // Select a riding (called when user clicks on map)
+        async selectElectionRiding(ridingNumber, ridingName) {
+            StateService.updateElection({
+                ridingNumber,
+                ridingName,
+                geographicLevel: 'riding'
+            });
+
+            await this.loadElectionData();
+        },
+
+        // Switch unit display (riding/poll/advance)
+        async switchUnitDisplay(unitDisplay) {
+            const election = StateService.getElection();
+
+            if (election.geographicLevel === 'national' && unitDisplay !== 'riding') {
+                alert('Poll and advance poll views are only available at Provincial or Single Riding levels');
+                return;
+            }
+
+            StateService.updateElection({ unitDisplay });
+            await this.loadElectionData();
+        },
+
+        // Switch year
+        async switchYear(year) {
+            const election = StateService.getElection();
+            const oldYear = election.year;
+
+            // Special handling when switching to/from 2025 at riding level
+            // because riding boundaries changed between 2021 and 2025
+            if (election.geographicLevel === 'riding' && election.ridingNumber) {
+                const yearChanged2025 = (oldYear !== '2025' && year === '2025') || (oldYear === '2025' && year !== '2025');
+
+                if (yearChanged2025) {
+                    // Reset to provincial level and clear riding selection
+                    StateService.updateElection({
+                        year,
+                        geographicLevel: 'provincial',
+                        ridingNumber: null,
+                        ridingName: null
+                    });
+
+                    // Show alert to inform user
+                    alert('Riding boundaries changed in 2025. Please select a riding from the updated boundaries.');
+
+                    // Repopulate riding dropdown with new year's boundaries if needed
+                    if (election.provinceId) {
+                        await UIManager.populateRidingDropdown(election.provinceId, year);
+                    }
+
+                    // Load provincial data
+                    await this.loadElectionData();
+                    return;
+                }
+            }
+
+            // For national and provincial levels, or when not crossing 2025 boundary, seamlessly switch years
+            StateService.updateElection({ year });
+            await this.loadElectionData();
+        },
+
+        // Select party filter
+        async selectPartyFilter(party) {
+            StateService.updateElection({ partyFilter: party });
+            await this.loadElectionData();
+        },
+
+        // Switch party scale type (absolute vs relative)
+        async switchPartyScaleType(scaleType) {
+            StateService.updateElection({ partyScaleType: scaleType });
+            await this.loadElectionData();
+        },
+
+        // Core data loading function - handles all combinations
+        async loadElectionData(fitBounds = false) {
+            const election = StateService.getElection();
+
+            try {
+                let dataUrl = '';
+                let data = null;
+
+                // Determine which file to load based on hierarchy
+                if (election.geographicLevel === 'national') {
+                    // National level - always riding view
+                    dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/${election.year}_riding_with_results_min.json`;
+                    data = await DataService.fetchGeoJSON(dataUrl);
+
+                } else if (election.geographicLevel === 'provincial') {
+                    // Provincial level - can be riding, poll, or advance
+                    if (!election.provinceId) {
+                        throw new Error('Province not selected');
+                    }
+
+                    if (election.unitDisplay === 'riding') {
+                        // Load all ridings for this province
+                        dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/${election.year}_riding_with_results_min.json`;
+                        data = await DataService.fetchGeoJSON(dataUrl);
+                        // Filter to province
+                        data = this.filterDataByProvince(data, election.provinceId);
+
+                    } else if (election.unitDisplay === 'poll') {
+                        // Load poll data for province
+                        dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/poll_by_province/${election.provinceId}_${election.provinceAbbr}_${election.year}_poll.json`;
+                        data = await DataService.fetchGeoJSON(dataUrl);
+
+                    } else if (election.unitDisplay === 'advance') {
+                        // Load advance poll data for province
+                        dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/adv_by_province/${election.provinceId}_${election.provinceAbbr}_${election.year}_adv.json`;
+                        data = await DataService.fetchGeoJSON(dataUrl);
+                    }
+
+                } else if (election.geographicLevel === 'riding') {
+                    // Single riding level - can be riding, poll, or advance
+                    if (!election.ridingNumber) {
+                        throw new Error('Riding not selected');
+                    }
+
+                    if (election.unitDisplay === 'riding') {
+                        // Load just this one riding
+                        dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/${election.year}_riding_with_results_min.json`;
+                        data = await DataService.fetchGeoJSON(dataUrl);
+                        // Filter to single riding
+                        data = this.filterDataByRiding(data, election.ridingNumber);
+
+                    } else if (election.unitDisplay === 'poll') {
+                        // Load poll data for this riding
+                        dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/poll_by_riding/${election.ridingNumber}_${election.year}_poll.json`;
+                        data = await DataService.fetchGeoJSON(dataUrl);
+
+                    } else if (election.unitDisplay === 'advance') {
+                        // Load advance poll data for this riding
+                        dataUrl = `election_boundaries_19-25/${election.year}_boundaries/geojson/adv_by_riding/${election.ridingNumber}_${election.year}_adv.json`;
+                        data = await DataService.fetchGeoJSON(dataUrl);
+                    }
+                }
+
+                // Store the loaded data
+                StateService.updateElection({ data });
+
+                // Render on map (preserving view unless fitBounds is true)
+                this.renderElectionData(data, fitBounds);
+
+            } catch (error) {
+                console.error("Failed to load election data:", error);
+                alert(`Failed to load election data: ${error.message}`);
+            }
+        },
+
+        // Filter national data to single province
+        filterDataByProvince(data, provinceId) {
+            return {
+                ...data,
+                features: data.features.filter(feature => {
+                    const fedNum = feature.properties.FED_NUM || feature.properties.FEDNUM;
+                    if (!fedNum) return false;
+                    const featureProvinceId = fedNum.toString().substring(0, 2);
+                    return featureProvinceId === provinceId.toString();
+                })
+            };
+        },
+
+        // Filter national data to single riding
+        filterDataByRiding(data, ridingNumber) {
+            return {
+                ...data,
+                features: data.features.filter(feature => {
+                    const fedNum = feature.properties.FED_NUM || feature.properties.FEDNUM;
+                    return fedNum && fedNum.toString() === ridingNumber.toString();
+                })
+            };
+        },
+
+        // Render election data on map with party filtering
+        renderElectionData(data, fitBounds = false) {
+            const election = StateService.getElection();
+
+            MapService.clearLayers();
+
+            if (!data || !data.features || data.features.length === 0) {
+                console.warn('No election data to render');
+                return;
+            }
+
+            // Preserve view unless explicitly told to fit bounds (i.e., province change)
+            const preserveView = !fitBounds;
+
+            // If party filter is active, modify styling
+            if (election.partyFilter !== 'all') {
+                MapService.displayElectionResultsWithPartyFilter(data, election.partyFilter, preserveView);
+            } else {
+                // Normal winner visualization
+                MapService.displayElectionResults(data, preserveView);
+            }
+        },
+
+        // === OLD UNIFIED ELECTION MODE (KEEPING FOR COMPATIBILITY) ===
+        async enterElectionMode() {
+            // Redirect to new hierarchical mode
+            await this.startElectionMode();
         },
 
         // Switch between riding/poll/party modes
@@ -2417,40 +3273,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        // Handle province selection in unified mode
-        async selectElectionProvince(provinceId, mode) {
-            // Hide the province overlay
-            UIManager.elements.electionProvinceOverlay.classList.add('hidden');
-
-            const state = StateService.getState();
-
-            if (mode === 'poll') {
-                await this.loadPollMode(provinceId, state.electionYear);
-            } else if (mode === 'party') {
-                // Set province and mode
-                StateService.setState({
-                    electionProvinceId: provinceId,
-                    electionMode: 'party'
-                });
-
-                // If party is already selected, reload party mode with new province
-                // Otherwise, show party selector
-                if (state.electionParty) {
-                    await this.loadPartyMode(provinceId, state.electionParty, state.electionYear);
-                } else {
-                    UIManager.showPartySelector();
-                }
-            }
-        },
-
-        // Handle party selection in unified mode
-        async selectElectionParty(party) {
-            // Hide the party overlay
-            UIManager.elements.electionPartyOverlay.classList.add('hidden');
-
-            const state = StateService.getState();
-            await this.loadPartyMode(state.electionProvinceId, party, state.electionYear);
-        },
+        // OLD FUNCTIONS REMOVED - Using new hierarchical election system
 
         // OLD FUNCTION - KEEPING FOR COMPATIBILITY (will remove later)
         async loadElectionResults(year, isToggle = false) {

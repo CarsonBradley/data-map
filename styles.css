@@ -862,6 +862,22 @@ body {
     margin-bottom: 0;
 }
 
+.info-section-header {
+    font-weight: 700;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+    margin-top: 1rem;
+}
+
+.info-section-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 1.5rem 0;
+}
+
 .info-election-winner {
     display: flex;
     align-items: center;

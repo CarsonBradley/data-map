@@ -2019,7 +2019,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.currentProvinceId) {
                 this.elements.provinceName.textContent = PROVINCES[state.currentProvinceId].name;
                 this.elements.provinceDisplay.classList.remove('hidden');
-                this.elements.electionDisplay.classList.add('hidden');
+                if (this.elements.electionDisplay) {
+                    this.elements.electionDisplay.classList.add('hidden');
+                }
             } else {
                 this.elements.provinceDisplay.classList.add('hidden');
             }

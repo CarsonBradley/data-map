@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Canadian demographics visualization web application that displays 2021 census data and federal election results (2019, 2021) on an interactive map. It's built with vanilla JavaScript and uses Leaflet.js for mapping functionality.
+This is a Canadian demographics visualization web application that displays 2021 census data and federal election results (2019, 2021, 2025) on an interactive map. It's built with vanilla JavaScript and uses Leaflet.js for mapping functionality. The application features three distinct modes: Census Mode for demographic data, Election Mode for national riding results, and Poll View Mode for province-level year-over-year election comparisons at the polling station level.
 
 ## Technology Stack
 
@@ -56,13 +56,23 @@ node join_poll_data_by_riding.js 2021  # Create per-riding poll files for 2021
 # Split advance poll boundaries by riding for drill-down views
 node join_adv_data_by_riding.js 2019   # Create per-riding advance poll files for 2019
 node join_adv_data_by_riding.js 2021   # Create per-riding advance poll files for 2021
+
+# Generate province-level poll files for Poll View mode
+node split_polls_by_province.js 2019   # Split 2019 polls by province
+node split_polls_by_province.js 2021   # Split 2021 polls by province
+node split_polls_by_province.js 2025   # Split 2025 polls by province
+
+# Merge election results into province-level poll files
+node merge_poll_results_to_provinces.js 2019  # Merge 2019 results into province files
+node merge_poll_results_to_provinces.js 2021  # Merge 2021 results into province files
 ```
 
 ## Architecture
 
-The application operates in two distinct modes:
+The application operates in three distinct modes:
 1. **Census Mode**: Province-based visualization of 2021 census data with DA and Federal Electoral District boundaries
 2. **Election Mode**: National visualization of 2019/2021 federal election results with riding-level and poll-level views
+3. **Poll View Mode**: Province-level comparison of polling station results across 2019, 2021, and 2025 elections for year-over-year analysis
 
 ### Core Components
 
@@ -145,6 +155,7 @@ The application operates in two distinct modes:
 
 The application includes a comprehensive election results visualization system:
 
+**Election Mode (National View):**
 - **Multi-year Support**: Toggle between 2019 and 2021 federal election results
 - **Three-level View**:
   - **Riding View**: Shows all 338 federal electoral districts colored by winning party
@@ -159,6 +170,17 @@ The application includes a comprehensive election results visualization system:
   - Color intensity reflects margin of victory within each poll/advance poll
 - **State Management**: Election state tracked via `showingElections`, `currentElectionYear`, `currentViewLevel` ('riding', 'poll', or 'advance'), `currentRidingNumber`
 - **Data Loading**: Poll and advance poll boundaries loaded on-demand per riding (files in `poll_by_riding/` and `adv_by_riding/` folders) to optimize performance
+
+**Poll View Mode (Province-Level Comparison):**
+- **Purpose**: Enables year-over-year comparison of election results at the polling station level within a single province
+- **Multi-year Support**: Toggle between 2019, 2021, and 2025 federal election results
+- **Key Feature**: Since poll boundaries remain geographically consistent across election years, users can observe electoral shifts at specific voting locations over time
+- **Province Selection**: Dedicated province selector for choosing which province's polls to view
+- **Data Structure**: Poll data pre-grouped by province for fast loading (files in `poll_by_province/` folders)
+- **Performance**: Significantly faster than loading national poll data (~30-100 MB per province vs. 424 MB national file)
+- **2025 Support**: Poll boundaries are available for 2025; election results can be added when available
+- **State Management**: Poll View state tracked via `showingPollView`, `pollViewProvinceId`, `pollViewYear`, `pollViewData`
+- **Interactive Elements**: Click individual polls to view detailed results; toggle years while maintaining current map view
 
 ### Data Processing Scripts
 
@@ -178,6 +200,10 @@ The application includes a comprehensive election results visualization system:
 - **join_poll_data_by_riding.js**: Splits poll-level boundaries and results by riding to create per-riding files for drill-down views. Takes year as argument. Creates one JSON file per riding in `poll_by_riding/` directory. Filters for regular polling stations (poll numbers < 600).
 - **join_adv_data_by_riding.js**: Splits advance poll boundaries and results by riding to create per-riding files for advance voting visualization. Takes year as argument. Creates one JSON file per riding in `adv_by_riding/` directory. Filters for advance polls only (poll numbers 600-699 range). Handles both 2019 (`ADVPDNUM`, `FEDNUM`) and 2021 (`ADV_POLL_N`, `FED_NUM`) property naming conventions.
 
+**Poll View Data Processing:**
+- **split_polls_by_province.js**: Groups poll boundaries by province for Poll View mode. Takes year as argument (2019, 2021, or 2025). Extracts province code (PRUID) from first 2 digits of FED_NUM property. Creates one JSON file per province in `poll_by_province/` directory. Significantly reduces file sizes compared to national file (~30-100 MB per province vs. 424 MB national).
+- **merge_poll_results_to_provinces.js**: Merges election results from `poll_by_riding/` files into province-level poll files. Takes year as argument (2019 or 2021). Builds a map of all poll results by FED_NUM and PD_NUM, then merges into corresponding province files. Must be run after `split_polls_by_province.js` and requires `poll_by_riding/` files to exist.
+
 ### File Structure
 
 - **Root files**: [index.html](index.html) (main entry), [script.js](script.js) (application logic), [styles.css](styles.css) (styling)
@@ -193,10 +219,11 @@ The application includes a comprehensive election results visualization system:
     - `geojson/` - Contains riding, poll, and advanced poll boundaries (both original and _wgs84 versions)
     - `geojson/poll_by_riding/` - Per-riding poll boundary files for drill-down views (election day polls)
     - `geojson/adv_by_riding/` - Per-riding advance poll boundary files for drill-down views (advance voting locations)
+    - `geojson/poll_by_province/` - Per-province poll boundary files for Poll View mode (format: `[PRUID]_[ABBR]_[YEAR]_poll.json`)
   - `/election_data_19-25/results_[YEAR]/` - Raw election result CSV files
     - `riding_[YEAR].csv` - Riding-level results
     - `poll_[YEAR]/` - Poll-level results (one CSV per riding, includes both regular and advance poll data)
-- **Processing scripts**: `/joining/` - Node.js and bash scripts for data transformation
+- **Processing scripts**: Root directory and `/joining/` - Node.js and bash scripts for data transformation
 
 ### UI Patterns
 

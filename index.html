@@ -47,6 +47,25 @@
                 </div>
                 <button id="change-election-btn">Change</button>
             </div>
+            <div id="poll-view-display" class="hidden">
+                <span id="poll-view-province-name"></span>
+                <div class="election-toggle-buttons">
+                    <button id="poll-toggle-2019-btn" class="election-toggle-btn">2019</button>
+                    <button id="poll-toggle-2021-btn" class="election-toggle-btn">2021</button>
+                    <button id="poll-toggle-2025-btn" class="election-toggle-btn">2025</button>
+                </div>
+                <button id="toggle-riding-boundaries-btn" class="header-button">Show Riding Boundaries</button>
+                <button id="change-poll-province-btn">Change Province</button>
+            </div>
+            <div id="party-analysis-display" class="hidden">
+                <span id="party-analysis-info"></span>
+                <div class="election-toggle-buttons">
+                    <button id="party-toggle-2019-btn" class="election-toggle-btn">2019</button>
+                    <button id="party-toggle-2021-btn" class="election-toggle-btn">2021</button>
+                </div>
+                <button id="change-party-btn" class="header-button">Change Party</button>
+                <button id="change-party-province-btn">Change Province</button>
+            </div>
         </div>
     </header>
 
@@ -76,9 +95,71 @@
                         <button id="view-2021-election-btn" class="btn btn-election">2021 Election</button>
                     </div>
                 </div>
+                <div class="poll-view-section">
+                    <h3>Poll-Level Comparison</h3>
+                    <p class="section-description">Compare election results year-over-year at the polling station level</p>
+                    <button id="view-poll-comparison-btn" class="btn btn-poll-view">Poll View by Province</button>
+                </div>
+                <div class="party-analysis-section">
+                    <h3>Party Vote Share Analysis</h3>
+                    <p class="section-description">Analyze individual party performance across polling stations</p>
+                    <button id="view-party-analysis-btn" class="btn btn-party-analysis">Party Analysis</button>
+                </div>
             </div>
         </div>
-        
+
+        <div id="poll-view-overlay" class="hidden">
+            <div class="welcome-content">
+                <h2>Poll-Level Comparison</h2>
+                <p>Select a province to view polling station results across multiple election years</p>
+                <div class="province-grid" id="poll-province-grid"></div>
+                <button id="back-to-welcome-btn" class="btn btn-back">Back to Main Menu</button>
+            </div>
+        </div>
+
+        <div id="party-analysis-overlay" class="hidden">
+            <div class="welcome-content">
+                <h2>Party Vote Share Analysis</h2>
+                <p>Select a province to analyze party performance</p>
+                <div class="province-grid" id="party-province-grid"></div>
+                <button id="back-to-welcome-from-party-btn" class="btn btn-back">Back to Main Menu</button>
+            </div>
+        </div>
+
+        <div id="party-selection-overlay" class="hidden">
+            <div class="welcome-content">
+                <h2>Select a Party to Analyze</h2>
+                <p id="party-selection-province-name">Choose which party's vote share to visualize</p>
+                <div class="party-grid">
+                    <button class="party-button liberal-btn" data-party="Liberal">
+                        <div class="party-color liberal-color"></div>
+                        <div class="party-name">Liberal</div>
+                    </button>
+                    <button class="party-button conservative-btn" data-party="Conservative">
+                        <div class="party-color conservative-color"></div>
+                        <div class="party-name">Conservative</div>
+                    </button>
+                    <button class="party-button ndp-btn" data-party="NDP">
+                        <div class="party-color ndp-color"></div>
+                        <div class="party-name">NDP</div>
+                    </button>
+                    <button class="party-button bloc-btn" data-party="Bloc Québécois">
+                        <div class="party-color bloc-color"></div>
+                        <div class="party-name">Bloc Québécois</div>
+                    </button>
+                    <button class="party-button green-btn" data-party="Green">
+                        <div class="party-color green-color"></div>
+                        <div class="party-name">Green</div>
+                    </button>
+                    <button class="party-button ppc-btn" data-party="PPC">
+                        <div class="party-color ppc-color"></div>
+                        <div class="party-name">PPC</div>
+                    </button>
+                </div>
+                <button id="back-to-party-province-btn" class="btn btn-back">Back to Province Selection</button>
+            </div>
+        </div>
+
         <div class="control-panel" id="control-panel">
             <div class="panel-header">
                 <h3 class="panel-title">Visualization Controls</h3>

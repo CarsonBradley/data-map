@@ -94,12 +94,18 @@ body {
     z-index: 2000;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     text-align: center;
     transition: opacity 0.5s ease, visibility 0.5s ease;
+    overflow-y: auto;
+    padding: 2rem 0;
 }
 #welcome-overlay.hidden { opacity: 0; visibility: hidden; }
-.welcome-content { max-width: 600px; padding: 2rem; }
+.welcome-content {
+    max-width: 600px;
+    padding: 2rem;
+    margin: auto;
+}
 .welcome-content h2 { font-size: 2.5rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.025em; margin-bottom: 0.5rem;}
 .welcome-content p { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 2rem; }
 .province-grid {
@@ -434,6 +440,210 @@ body {
     margin-bottom: 1rem;
     color: var(--text-primary);
     font-size: 1.5rem;
+}
+
+/* POLL VIEW STYLES */
+.poll-view-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid var(--border-color);
+    text-align: center;
+}
+
+.poll-view-section h3 {
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+}
+
+.section-description {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+}
+
+.btn-poll-view {
+    background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
+    color: white;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-lg);
+}
+
+.btn-poll-view:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-xl);
+}
+
+.btn-back {
+    margin-top: 1.5rem;
+    background: var(--slate-600);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-back:hover {
+    background: var(--slate-700);
+    transform: translateY(-1px);
+}
+
+#poll-view-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.7);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 2rem 0;
+    text-align: center;
+}
+
+#poll-view-overlay.hidden {
+    display: none;
+}
+
+#poll-view-overlay .welcome-content {
+    margin: auto;
+}
+
+/* PARTY ANALYSIS STYLES */
+.party-analysis-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 2px solid var(--border-color);
+    text-align: center;
+}
+
+.party-analysis-section h3 {
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+}
+
+.btn-party-analysis {
+    background: linear-gradient(135deg, #9333EA 0%, #4F46E5 100%);
+    color: white;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-lg);
+}
+
+.btn-party-analysis:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-xl);
+}
+
+#party-analysis-overlay,
+#party-selection-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.7);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 2rem 0;
+    text-align: center;
+}
+
+#party-analysis-overlay.hidden,
+#party-selection-overlay.hidden {
+    display: none;
+}
+
+.party-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.party-button {
+    padding: 1.5rem 1rem;
+    background: var(--white);
+    border: 2px solid var(--border-color);
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.party-button:hover {
+    border-color: var(--slate-400);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.party-color {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    box-shadow: var(--shadow-md);
+}
+
+.party-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.liberal-color {
+    background: #DC2626;
+}
+
+.conservative-color {
+    background: #2563EB;
+}
+
+.ndp-color {
+    background: #F97316;
+}
+
+.bloc-color {
+    background: #06B6D4;
+}
+
+.green-color {
+    background: #16A34A;
+}
+
+.ppc-color {
+    background: #7C3AED;
 }
 
 .election-buttons {

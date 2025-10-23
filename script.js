@@ -582,7 +582,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (results.candidates && results.candidates.length > 0) {
                                 content += `<div class="info-all-candidates"><strong>All Candidates</strong>`;
-                                results.candidates.forEach(c => {
+                                // Sort candidates by percentage in descending order
+                                const sortedCandidates = [...results.candidates].sort((a, b) =>
+                                    parseFloat(b.percentage) - parseFloat(a.percentage)
+                                );
+                                sortedCandidates.forEach(c => {
                                     const highlight = c.party === party ? ' style="font-weight: 700;"' : '';
                                     content += `
                                         <div class="info-candidate-row"${highlight}>
@@ -596,8 +600,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             content += `<div class="info-panel-hint">No poll data available</div>`;
                         }
 
-                        // Update side panel
-                        UIManager.updateElectionInfo(`Poll ${pdNum} - ${party}`, content);
+                        // Update side panel with chart
+                        UIManager.updateElectionInfo(`Poll ${pdNum} - ${party}`, content, results?.candidates || null);
                     });
                 }
             }).addTo(this.map);
@@ -672,7 +676,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (results.candidates && results.candidates.length > 1) {
                                 content += `<div class="info-all-candidates"><strong>All Candidates</strong>`;
-                                results.candidates.forEach(candidate => {
+                                // Sort candidates by percentage in descending order
+                                const sortedCandidates = [...results.candidates].sort((a, b) =>
+                                    parseFloat(b.percentage) - parseFloat(a.percentage)
+                                );
+                                sortedCandidates.forEach(candidate => {
                                     const indicator = candidate.isWinner ? ' ★' : '';
                                     content += `
                                         <div class="info-candidate-row">
@@ -686,8 +694,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             content += `<div class="info-panel-hint">No election data available</div>`;
                         }
 
-                        // Update side panel
-                        UIManager.updateElectionInfo(`${props.ED_NAMEE} (Riding ${props.FED_NUM})`, content);
+                        // Update side panel with chart
+                        UIManager.updateElectionInfo(
+                            `${props.ED_NAMEE} (Riding ${props.FED_NUM})`,
+                            content,
+                            results?.candidates || null
+                        );
                     });
                 }
             }).addTo(this.map);
@@ -725,7 +737,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const colorInfo = this.getPollColorInfo(results);
 
                     return {
-                        fillColor: colorInfo.color || '#E5E7EB',
+                        fillColor: colorInfo.color || '#9CA3AF',
                         weight: 0.5,
                         color: '#999999',
                         opacity: 0.4,
@@ -795,7 +807,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (results.candidates && results.candidates.length > 0) {
                                 content += `<div class="info-all-candidates"><strong>Results by Candidate</strong>`;
-                                results.candidates.forEach(candidate => {
+                                // Sort candidates by percentage in descending order
+                                const sortedCandidates = [...results.candidates].sort((a, b) =>
+                                    parseFloat(b.percentage) - parseFloat(a.percentage)
+                                );
+                                sortedCandidates.forEach(candidate => {
                                     const indicator = candidate.party === winner.party ? ' ★' : '';
                                     content += `
                                         <div class="info-candidate-row">
@@ -809,9 +825,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             content += `<div class="info-panel-hint">No poll data available</div>`;
                         }
 
-                        // Update side panel
+                        // Update side panel with chart
                         const title = ridingNumber ? `Poll ${pdNum} - Riding ${ridingNumber}` : `Poll ${pdNum}`;
-                        UIManager.updateElectionInfo(title, content);
+                        UIManager.updateElectionInfo(title, content, results?.candidates || null);
                     });
                 }
             }).addTo(this.map);
@@ -842,7 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const colorInfo = this.getPollColorInfo(results);
 
                     return {
-                        fillColor: colorInfo.color || '#E5E7EB',
+                        fillColor: colorInfo.color || '#9CA3AF',
                         weight: 0.5,
                         color: '#999999',
                         opacity: 0.4,
@@ -909,7 +925,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (results.candidates && results.candidates.length > 0) {
                                 content += `<div class="info-all-candidates"><strong>Results by Candidate</strong>`;
-                                results.candidates.forEach(candidate => {
+                                // Sort candidates by percentage in descending order
+                                const sortedCandidates = [...results.candidates].sort((a, b) =>
+                                    parseFloat(b.percentage) - parseFloat(a.percentage)
+                                );
+                                sortedCandidates.forEach(candidate => {
                                     const indicator = candidate.party === winner.party ? ' ★' : '';
                                     content += `
                                         <div class="info-candidate-row">
@@ -923,8 +943,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             content += `<div class="info-panel-hint">No advance poll data available</div>`;
                         }
 
-                        // Update side panel
-                        UIManager.updateElectionInfo(`Advance Poll ${advPollNum} - Riding ${ridingNumber}`, content);
+                        // Update side panel with chart
+                        UIManager.updateElectionInfo(`Advance Poll ${advPollNum} - Riding ${ridingNumber}`, content, results?.candidates || null);
                     });
                 }
             }).addTo(this.map);
@@ -957,7 +977,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         getPollColorInfo(results) {
             if (!results || !results.candidates || results.candidates.length === 0) {
-                return { color: '#E5E7EB', striped: false }; // Light gray for no data
+                return { color: '#9CA3AF', striped: false }; // Mid-grey for no data
             }
 
             // Sort candidates by votes to get all tied candidates
@@ -1384,10 +1404,104 @@ document.addEventListener('DOMContentLoaded', () => {
             this.elements.electionInfoPanel.classList.add('hidden');
         },
 
-        updateElectionInfo(title, content) {
+        currentChart: null,
+
+        updateElectionInfo(title, content, candidates = null) {
             this.elements.infoPanelTitle.textContent = title;
-            this.elements.infoPanelContent.innerHTML = content;
+
+            // Update the data content
+            const dataContainer = document.getElementById('info-panel-data');
+            if (dataContainer) {
+                dataContainer.innerHTML = content;
+            }
+
+            // Create pie chart if we have candidate data
+            if (candidates && candidates.length > 0) {
+                this.createVoteShareChart(candidates);
+            } else {
+                // Hide chart if no candidates
+                const chartContainer = document.getElementById('info-panel-chart-container');
+                if (chartContainer) {
+                    chartContainer.classList.add('hidden');
+                }
+            }
+
             this.showElectionInfo();
+        },
+
+        createVoteShareChart(candidates) {
+            const chartContainer = document.getElementById('info-panel-chart-container');
+            const canvas = document.getElementById('info-panel-chart');
+
+            if (!canvas || !chartContainer) return;
+
+            // Show chart container
+            chartContainer.classList.remove('hidden');
+
+            // Destroy existing chart if any
+            if (this.currentChart) {
+                this.currentChart.destroy();
+                this.currentChart = null;
+            }
+
+            // Prepare data for chart
+            const labels = candidates.map(c => c.party || c.name);
+            const data = candidates.map(c => parseInt(c.votes) || 0);
+            const colors = candidates.map(c => {
+                const partyColors = {
+                    'Liberal': '#DC2626',
+                    'Conservative': '#2563EB',
+                    'NDP': '#F97316',
+                    'Bloc Québécois': '#06B6D4',
+                    'Green': '#16A34A',
+                    'PPC': '#7C3AED',
+                    'Independent': '#6B7280'
+                };
+                return partyColors[c.party] || '#9CA3AF';
+            });
+
+            // Create new chart
+            const ctx = canvas.getContext('2d');
+            this.currentChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderColor: '#ffffff',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 10,
+                                font: {
+                                    size: 11,
+                                    family: 'Inter'
+                                },
+                                color: '#334155'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value.toLocaleString()} votes (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         },
 
         handleStateChange(state) {

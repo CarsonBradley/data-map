@@ -830,6 +830,23 @@ body {
     padding: 1.5rem;
 }
 
+.info-panel-chart-container {
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto 1.5rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 0.5rem;
+}
+
+.info-panel-chart-container.hidden {
+    display: none;
+}
+
+.info-panel-chart-container canvas {
+    max-height: 250px;
+}
+
 .info-panel-hint {
     color: var(--text-secondary);
     text-align: center;

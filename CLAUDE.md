@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Canadian demographics visualization web application that displays 2021 census data on an interactive map. It's built with vanilla JavaScript and uses Leaflet.js for mapping functionality.
+This is a Canadian demographics visualization web application that displays 2021 census data and federal election results (2019, 2021) on an interactive map. It's built with vanilla JavaScript and uses Leaflet.js for mapping functionality.
 
 ## Technology Stack
 
@@ -40,12 +40,29 @@ node split_provinces_stream.js # Streaming version for very large files
 ./split_provinces_parallel.sh  # Parallel processing version using jq
 
 # Transform coordinate systems from EPSG:3347 to EPSG:4326
-node transform_provinces.js    # Transform province boundary files
+node transform_provinces.js         # Transform province boundary files
+node transform_election_boundaries.js  # Transform election boundaries (2019, 2021, 2025)
 # or
-node join_data.js              # Alternative transformation script
+node join_data.js                   # Alternative transformation script
+
+# Join election results with boundaries
+node join_election_data_year.js 2019  # Join 2019 election results
+node join_election_data_year.js 2021  # Join 2021 election results
+
+# Split poll boundaries by riding for drill-down views
+node join_poll_data_by_riding.js 2019  # Create per-riding poll files for 2019
+node join_poll_data_by_riding.js 2021  # Create per-riding poll files for 2021
+
+# Split advance poll boundaries by riding for drill-down views
+node join_adv_data_by_riding.js 2019   # Create per-riding advance poll files for 2019
+node join_adv_data_by_riding.js 2021   # Create per-riding advance poll files for 2021
 ```
 
 ## Architecture
+
+The application operates in two distinct modes:
+1. **Census Mode**: Province-based visualization of 2021 census data with DA and Federal Electoral District boundaries
+2. **Election Mode**: National visualization of 2019/2021 federal election results with riding-level and poll-level views
 
 ### Core Components
 
@@ -84,6 +101,12 @@ node join_data.js              # Alternative transformation script
 - **Boundary Files**:
   - DA boundaries by province: `/new_boundaries/provinces/da_[PRUID]_[ABBR]_wgs84.geojson`
   - Federal electoral boundaries: `/boundaries/fed_2023_boundaries.geojson`
+  - Election boundaries (2019, 2021, 2025):
+    - Riding level: `/election_boundaries_19-25/[YEAR]_boundaries/geojson/[YEAR]_riding_wgs84.json`
+    - Poll level: `/election_boundaries_19-25/[YEAR]_boundaries/geojson/[YEAR]_poll_wgs84.json`
+    - Advanced poll: `/election_boundaries_19-25/[YEAR]_boundaries/geojson/[YEAR]_adv_wgs84.json`
+    - Poll by riding: `/election_boundaries_19-25/[YEAR]_boundaries/geojson/poll_by_riding/[FED_NUM]_[YEAR]_poll.json`
+    - Advance polls by riding: `/election_boundaries_19-25/[YEAR]_boundaries/geojson/adv_by_riding/[FED_NUM]_[YEAR]_adv.json`
   - Source boundaries in `/boundaries/` and `/new_boundaries/` directories
   - Split by province to reduce file size and improve load times
   - Original coordinate system: EPSG:3347 (Statistics Canada Lambert)
@@ -94,6 +117,12 @@ node join_data.js              # Alternative transformation script
   - Federal electoral data: `/output_data/filtered_fed_data.csv`
   - Columns: DGUID (or FED_NUM), CHARACTERISTIC_GROUP, CHARACTERISTIC_ID, CHARACTERISTIC_NAME, C1_COUNT_TOTAL, C10_RATE_TOTAL
   - Organized by characteristic groups: 1=Age, 2=Housing, 3=Income, 4=Language, 5=Ethnicity, 6=Religion, 7=Education, 8=Commute
+
+- **Election Data**:
+  - Riding results: `/election_boundaries_19-25/[YEAR]_boundaries/geojson/[YEAR]_riding_with_results_min.json`
+  - Poll results: Embedded in `electionResults` property of each feature
+  - Structure includes: `ridingNumber`, `ridingName`, `candidates[]`, `totalVotes`, `winner` (with `party`, `votes`, `percentage`, `margin`, `marginPercent`)
+  - Raw CSV data: `/election_data_19-25/results_[YEAR]/riding_[YEAR].csv` and `/election_data_19-25/results_[YEAR]/poll_[YEAR]/[FED_NUM].csv`
 
 ### Key Implementation Details
 
@@ -112,8 +141,28 @@ node join_data.js              # Alternative transformation script
 - Average/median characteristics only show "Total Count" display type (percentages don't make sense)
 - Join keys: DA boundaries use `DGUID` property, Federal boundaries extract `FED_NUM` from the `description` field
 
+### Election Visualization Features
+
+The application includes a comprehensive election results visualization system:
+
+- **Multi-year Support**: Toggle between 2019 and 2021 federal election results
+- **Three-level View**:
+  - **Riding View**: Shows all 338 federal electoral districts colored by winning party
+  - **Poll View**: Drill down into individual ridings to see poll-by-poll results (election day polls)
+  - **Advance View**: Drill down into individual ridings to see advance poll results
+- **Interactive Elements**:
+  - Click riding to view detailed results in info panel
+  - Click "Poll" button to load granular poll boundaries (election day voting)
+  - Click "Advance" button to load advance poll boundaries (early voting locations)
+  - Toggle between years preserves current view (riding, poll, or advance)
+  - Automatic party color coding (Liberal=red, Conservative=blue, NDP=orange, Bloc=cyan, Green=green, PPC=purple)
+  - Color intensity reflects margin of victory within each poll/advance poll
+- **State Management**: Election state tracked via `showingElections`, `currentElectionYear`, `currentViewLevel` ('riding', 'poll', or 'advance'), `currentRidingNumber`
+- **Data Loading**: Poll and advance poll boundaries loaded on-demand per riding (files in `poll_by_riding/` and `adv_by_riding/` folders) to optimize performance
+
 ### Data Processing Scripts
 
+**Census Data Processing:**
 - **transform_provinces.js**: Transforms province boundary files from EPSG:3347 to EPSG:4326, processing each province file individually. Works for files up to ~100MB. Modify the `provinces` object to transform specific provinces only.
 - **transform_large.js**: Handles larger files (100MB-400MB) using increased Node.js memory allocation. Run with: `node --max-old-space-size=8192 transform_large.js <code> <abbr>`
 - **transform_python.py**: Python-based transformer for very large files (400MB+). Requires `pip3 install pyproj`. Run with: `python3 transform_python.py <code> <abbr>`
@@ -122,6 +171,12 @@ node join_data.js              # Alternative transformation script
 - **joining/split_provinces_stream.js**: Streaming version for handling very large files without memory issues
 - **joining/split_provinces_parallel.sh**: Parallel processing version using `jq` and bash for fastest execution
 - All scripts filter features by PRUID (province code) and create separate files per province
+
+**Election Data Processing:**
+- **transform_election_boundaries.js**: Transforms election boundary files (riding, poll, advanced poll) for 2019, 2021, and 2025 from EPSG:3347 to EPSG:4326. Processes all years and types in one run.
+- **join_election_data_year.js**: Joins election results CSV data with riding boundaries. Takes year as argument (2019 or 2021). Parses candidate data, identifies winners, normalizes party names, creates `_riding_with_results.json` output.
+- **join_poll_data_by_riding.js**: Splits poll-level boundaries and results by riding to create per-riding files for drill-down views. Takes year as argument. Creates one JSON file per riding in `poll_by_riding/` directory. Filters for regular polling stations (poll numbers < 600).
+- **join_adv_data_by_riding.js**: Splits advance poll boundaries and results by riding to create per-riding files for advance voting visualization. Takes year as argument. Creates one JSON file per riding in `adv_by_riding/` directory. Filters for advance polls only (poll numbers 600-699 range). Handles both 2019 (`ADVPDNUM`, `FEDNUM`) and 2021 (`ADV_POLL_N`, `FED_NUM`) property naming conventions.
 
 ### File Structure
 
@@ -133,6 +188,14 @@ node join_data.js              # Alternative transformation script
   - `/new_boundaries/provinces/` - Fine-grained DA boundary files by province (transformed to WGS84)
   - Large national files in root (canada_da_*.geojson)
 - **Census data**: `/output_data/provinces/` - CSV files with demographic data by province
+- **Election data**:
+  - `/election_boundaries_19-25/[YEAR]_boundaries/` - Boundary files by year
+    - `geojson/` - Contains riding, poll, and advanced poll boundaries (both original and _wgs84 versions)
+    - `geojson/poll_by_riding/` - Per-riding poll boundary files for drill-down views (election day polls)
+    - `geojson/adv_by_riding/` - Per-riding advance poll boundary files for drill-down views (advance voting locations)
+  - `/election_data_19-25/results_[YEAR]/` - Raw election result CSV files
+    - `riding_[YEAR].csv` - Riding-level results
+    - `poll_[YEAR]/` - Poll-level results (one CSV per riding, includes both regular and advance poll data)
 - **Processing scripts**: `/joining/` - Node.js and bash scripts for data transformation
 
 ### UI Patterns
@@ -195,3 +258,31 @@ pip3 install pyproj
 python3 transform_python.py 35 ON
 python3 transform_python.py 62 NU
 ```
+
+## Application State
+
+The StateService manages application state using a pub/sub pattern. Key state properties include:
+
+**Census Mode:**
+- `currentProvinceId`: Selected province code (PRUID)
+- `provinceGeoData`: Province DA boundaries
+- `provinceCensusData`: Province census data
+- `federalGeoData`: Federal electoral district boundaries
+- `federalCensusData`: Federal census data
+- `currentBoundaryType`: 'DA' or 'Federal'
+- `showFederalOverlay`: Boolean for federal boundary overlay
+- `hasLoadedFederalData`: Boolean tracking if federal data is cached
+
+**Election Mode:**
+- `showingElections`: Boolean indicating election mode is active
+- `currentElectionYear`: '2019' or '2021'
+- `electionData`: GeoJSON with embedded election results
+- `currentViewLevel`: 'riding', 'poll', or 'advance'
+- `currentRidingNumber`: FED_NUM when in poll or advance view
+- `isTogglingElection`: Boolean for year toggle loading state
+
+**Common:**
+- `currentVisualization`: Active visualization config (characteristicName, dataType, valueMap, min, max)
+- `isPanelOpen`: Control panel visibility
+- `isLoading`: Full-screen loading overlay state
+- `loadingMessage`: Loading text message

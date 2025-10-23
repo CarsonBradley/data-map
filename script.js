@@ -597,11 +597,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                     </div>
                                     <div class="info-stat">
                                         <div class="info-stat-label">Electors</div>
-                                        <div class="info-stat-value">${results.electors.toLocaleString()}</div>
+                                        <div class="info-stat-value">${results.electors > 0 ? results.electors.toLocaleString() : 'N/A'}</div>
                                     </div>
                                     <div class="info-stat">
                                         <div class="info-stat-label">Turnout</div>
-                                        <div class="info-stat-value">${((results.totalVotes / results.electors) * 100).toFixed(1)}%</div>
+                                        <div class="info-stat-value">${results.electors > 0 ? ((results.totalVotes / results.electors) * 100).toFixed(1) + '%' : 'N/A'}</div>
                                     </div>
                                 </div>`;
 
@@ -623,6 +623,119 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         // Update side panel
                         UIManager.updateElectionInfo(`Poll ${pdNum} - Riding ${ridingNumber}`, content);
+                    });
+                }
+            }).addTo(this.map);
+
+            // Only fit bounds on initial load
+            if (!preserveView) {
+                try {
+                    const bounds = this.electionLayer.getBounds();
+                    if (bounds.isValid()) {
+                        this.map.fitBounds(bounds, { padding: [20, 20] });
+                    }
+                } catch (e) {
+                    console.warn('Could not fit bounds:', e);
+                }
+            }
+        },
+
+        displayAdvanceResults(advData, ridingNumber, preserveView = false) {
+            if (this.electionLayer) {
+                this.map.removeLayer(this.electionLayer);
+                this.electionLayer = null;
+            }
+
+            this.electionLayer = L.geoJSON(advData, {
+                pane: 'electionPane',
+                style: feature => {
+                    const results = feature.properties.advResults;
+                    const colorInfo = this.getPollColorInfo(results);
+
+                    return {
+                        fillColor: colorInfo.color || '#E5E7EB',
+                        weight: 0.5,
+                        color: '#999999',
+                        opacity: 0.4,
+                        fillOpacity: 0.85,
+                        // Store stripe info for custom rendering
+                        className: colorInfo.striped ? 'striped-poll' : ''
+                    };
+                },
+                onEachFeature: (feature, layer) => {
+                    // Apply stripes if needed
+                    const results = feature.properties.advResults;
+                    const colorInfo = this.getPollColorInfo(results);
+
+                    if (colorInfo.striped && colorInfo.colors) {
+                        // Create diagonal stripe pattern using canvas
+                        layer.on('add', () => {
+                            const path = layer._path;
+                            if (path) {
+                                this.applyStripedPattern(path, colorInfo.colors);
+                            }
+                        });
+                    }
+
+                    layer.on('click', () => {
+                        const results = feature.properties.advResults;
+                        const props = feature.properties;
+                        // Handle both property names: ADV_POLL_N (2021) and ADVPDNUM (2019)
+                        const advPollNum = props.ADV_POLL_N || props.ADVPDNUM;
+
+                        // Highlight this advance poll
+                        this.highlightSelectedPoll(layer);
+
+                        // Build content for side panel
+                        let content = '';
+
+                        if (results && results.winner) {
+                            const winner = results.winner;
+                            content += `
+                                <div class="info-election-winner">
+                                    <div class="info-party-badge" style="background-color: ${this.getPartyColor(winner.party)}"></div>
+                                    <div class="info-winner-info">
+                                        <div class="info-winner-name">${winner.name}</div>
+                                        <div class="info-winner-party">${winner.party}</div>
+                                    </div>
+                                </div>
+                                <div class="info-election-stats">
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Advance Poll Location</div>
+                                        <div class="info-stat-value">${results.pollName || 'N/A'}</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Total Votes</div>
+                                        <div class="info-stat-value">${results.totalVotes.toLocaleString()}</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Electors</div>
+                                        <div class="info-stat-value">${results.electors > 0 ? results.electors.toLocaleString() : 'N/A'}</div>
+                                    </div>
+                                    <div class="info-stat">
+                                        <div class="info-stat-label">Turnout</div>
+                                        <div class="info-stat-value">${results.electors > 0 ? ((results.totalVotes / results.electors) * 100).toFixed(1) + '%' : 'N/A'}</div>
+                                    </div>
+                                </div>`;
+
+                            if (results.candidates && results.candidates.length > 0) {
+                                content += `<div class="info-all-candidates"><strong>Results by Candidate</strong>`;
+                                results.candidates.forEach(candidate => {
+                                    const indicator = candidate.party === winner.party ? ' ★' : '';
+                                    content += `
+                                        <div class="info-candidate-row">
+                                            <span class="info-candidate-party" style="color: ${this.getPartyColor(candidate.party)}">${candidate.party}</span>
+                                            <span class="info-candidate-votes">${candidate.votes} (${candidate.percentage}%)${indicator}</span>
+                                        </div>`;
+                                });
+                                content += `</div>`;
+                            }
+                        } else {
+                            content += `<div class="info-panel-hint">No advance poll data available</div>`;
+                        }
+
+                        // Update side panel
+                        UIManager.updateElectionInfo(`Advance Poll ${advPollNum} - Riding ${ridingNumber}`, content);
                     });
                 }
             }).addTo(this.map);
@@ -928,6 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
             toggle2021Btn: document.getElementById('toggle-2021-btn'),
             toggleRidingViewBtn: document.getElementById('toggle-riding-view-btn'),
             togglePollViewBtn: document.getElementById('toggle-poll-view-btn'),
+            toggleAdvViewBtn: document.getElementById('toggle-adv-view-btn'),
             viewLevelToggle: document.getElementById('view-level-toggle'),
             controlPanel: document.getElementById('control-panel'),
             panelCloseBtn: document.getElementById('panel-close'),
@@ -975,6 +1089,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (this.elements.togglePollViewBtn) {
                 this.elements.togglePollViewBtn.addEventListener('click', () => App.toggleViewLevel('poll'));
+            }
+            if (this.elements.toggleAdvViewBtn) {
+                this.elements.toggleAdvViewBtn.addEventListener('click', () => App.toggleViewLevel('advance'));
             }
 
             // Add info panel close listener
@@ -1049,10 +1166,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const viewLevel = state.currentViewLevel || 'riding';
                 this.elements.toggleRidingViewBtn.classList.toggle('active', viewLevel === 'riding');
                 this.elements.togglePollViewBtn.classList.toggle('active', viewLevel === 'poll');
+                this.elements.toggleAdvViewBtn.classList.toggle('active', viewLevel === 'advance');
 
-                // Disable poll button when in riding view (no riding selected yet)
+                // Disable poll and advance buttons when in riding view (no riding selected yet)
                 this.elements.togglePollViewBtn.disabled = !state.currentRidingNumber;
                 this.elements.togglePollViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
+                this.elements.toggleAdvViewBtn.disabled = !state.currentRidingNumber;
+                this.elements.toggleAdvViewBtn.style.opacity = state.currentRidingNumber ? '1' : '0.5';
             } else {
                 this.elements.electionDisplay.classList.add('hidden');
             }
@@ -1389,6 +1509,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     StateService.setState({ isTogglingElection: false });
                     alert(`Failed to load ${year} poll data. Please try again.`);
                 }
+            } else if (state.currentViewLevel === 'advance' && state.currentRidingNumber) {
+                // Reload advance poll data for the same riding in the new year
+                try {
+                    StateService.setState({
+                        isTogglingElection: true,
+                        currentElectionYear: year
+                    });
+
+                    // Load advance poll data for this riding in the new year
+                    const advData = await DataService.fetchGeoJSON(
+                        `election_boundaries_19-25/${year}_boundaries/geojson/adv_by_riding/${state.currentRidingNumber}_${year}_adv.json`
+                    );
+
+                    StateService.setState({
+                        isTogglingElection: false
+                    });
+
+                    // Display advance results, preserving view
+                    MapService.displayAdvanceResults(advData, state.currentRidingNumber, true);
+
+                } catch (error) {
+                    console.error("Failed to load advance poll data for new year:", error);
+                    StateService.setState({ isTogglingElection: false });
+                    alert(`Failed to load ${year} advance poll data. Please try again.`);
+                }
             } else {
                 // We're in riding view, use the normal toggle
                 await this.loadElectionResults(year, true);
@@ -1425,6 +1570,36 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
+        async viewAdvancePolls(ridingNumber) {
+            try {
+                const state = StateService.getState();
+                const year = state.currentElectionYear;
+
+                StateService.setState({ isTogglingElection: true });
+
+                // Close any open popups
+                MapService.map.closePopup();
+
+                // Load advance poll data for this riding
+                const advData = await DataService.fetchGeoJSON(
+                    `election_boundaries_19-25/${year}_boundaries/geojson/adv_by_riding/${ridingNumber}_${year}_adv.json`
+                );
+
+                StateService.setState({
+                    currentViewLevel: 'advance',
+                    currentRidingNumber: ridingNumber,
+                    isTogglingElection: false
+                });
+
+                MapService.displayAdvanceResults(advData, ridingNumber);
+
+            } catch (error) {
+                console.error("Failed to load advance poll data:", error);
+                StateService.setState({ isTogglingElection: false });
+                alert('Failed to load advance poll data. Please try again.');
+            }
+        },
+
         async toggleViewLevel(level) {
             const state = StateService.getState();
 
@@ -1435,6 +1610,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (level === 'poll' && state.currentRidingNumber) {
                 // Re-load poll view
                 await this.viewPollByPoll(state.currentRidingNumber);
+            } else if (level === 'advance' && state.currentRidingNumber) {
+                // Load advance poll view
+                await this.viewAdvancePolls(state.currentRidingNumber);
             }
         },
 
